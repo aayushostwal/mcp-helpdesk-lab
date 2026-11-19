@@ -19,6 +19,7 @@ dependencies = [
   "typer>=0.12",
   "httpx>=0.27",
   "faker>=28.0",
+  "mcp>=1.30,<2",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +35,7 @@ dev = [
 
 [project.scripts]
 helpdesk = "helpdesk.cli:app"
+helpdesk-mcp = "helpdesk_mcp.cli:app"
 
 [build-system]
 requires = ["hatchling"]
@@ -41,6 +43,9 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/helpdesk", "src/helpdesk_mcp"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"openapi.json" = "helpdesk_mcp/openapi.json"
 
 [tool.ruff]
 line-length = 100
@@ -73,11 +78,15 @@ addopts = "-ra"
 filterwarnings = ["error::RuntimeWarning"]
 
 [tool.coverage.run]
-source = ["src/helpdesk"]
+source = ["src/helpdesk", "src/helpdesk_mcp"]
 concurrency = ["thread", "greenlet"]
-omit = ["src/helpdesk/migrations/*"]
+omit = ["src/helpdesk/migrations/*", "src/helpdesk_mcp/__main__.py"]
 
 [tool.coverage.report]
 fail_under = 90
 show_missing = true
 skip_covered = true
+
+[[tool.mypy.overrides]]
+module = ["jsonschema", "jsonschema.*"]
+ignore_missing_imports = true

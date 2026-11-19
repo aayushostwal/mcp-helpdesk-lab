@@ -7,9 +7,12 @@ SHELL := /bin/bash
 FROZEN_TIME ?= 2026-06-01T12:00:00+00:00
 DATABASE_URL ?= sqlite:///./helpdesk.db
 PORT ?= 8000
+# MCP server: which tool design to run, and extra flags (for example MCP_ARGS="--tool-count 25").
+VARIANT ?= per-endpoint
+MCP_ARGS ?=
 export DATABASE_URL
 
-.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check docker clean
+.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check mcp inspector tool-sizes docker clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -28,8 +31,9 @@ fmt: ## Auto-fix lint issues and format
 typecheck: ## mypy --strict
 	uv run mypy
 
-test: ## Run the test suite with a coverage gate (90%)
+test: ## Run the test suite with a coverage gate (90% overall, 90% for the MCP server)
 	uv run pytest --cov --cov-report=term-missing:skip-covered
+	uv run coverage report --include="src/helpdesk_mcp/*" --fail-under=90 --skip-covered
 
 cov: ## Test suite with an HTML coverage report
 	uv run pytest --cov --cov-report=html
@@ -54,6 +58,15 @@ openapi: ## Regenerate openapi.json
 
 openapi-check: ## Fail if openapi.json is stale
 	uv run python scripts/export_openapi.py --check
+
+mcp: ## Run the MCP server over stdio (VARIANT=, MCP_ARGS=; needs HELPDESK_MCP_API_KEY)
+	uv run helpdesk-mcp --variant $(VARIANT) $(MCP_ARGS)
+
+inspector: ## Open the MCP Inspector on the server (needs npx and HELPDESK_MCP_API_KEY)
+	npx @modelcontextprotocol/inspector uv run helpdesk-mcp --variant $(VARIANT) $(MCP_ARGS)
+
+tool-sizes: ## Regenerate docs/tool-list-sizes.md (tool counts and approximate tokens per variant)
+	uv run python scripts/mcp_token_report.py -o docs/tool-list-sizes.md
 
 docker: ## Build the API image
 	docker build -t mcp-helpdesk-lab:dev .

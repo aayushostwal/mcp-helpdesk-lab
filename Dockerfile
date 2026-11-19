@@ -8,6 +8,8 @@ WORKDIR /app
 COPY pyproject.toml uv.lock README.md ./
 RUN uv sync --frozen --no-dev --extra postgres --no-install-project
 
+# openapi.json is bundled into the wheel (the MCP server builds its tools from it).
+COPY openapi.json ./
 COPY src ./src
 RUN uv sync --frozen --no-dev --extra postgres
 

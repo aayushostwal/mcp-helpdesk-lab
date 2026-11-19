@@ -35,6 +35,8 @@ jobs:
           enable-cache: true
       - run: uv sync --all-extras
       - run: uv run pytest --cov --cov-report=term-missing:skip-covered
+      - name: MCP server coverage is at least 90%
+        run: uv run coverage report --include="src/helpdesk_mcp/*" --fail-under=90 --skip-covered
       - name: openapi.json is current
         run: uv run python scripts/export_openapi.py --check
 
