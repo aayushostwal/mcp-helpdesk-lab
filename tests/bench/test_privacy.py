@@ -9,6 +9,7 @@ import socket
 from pathlib import Path
 
 from bench.harness.paths import RESULTS_DIR
+from demo.paths import RESULTS_DIR as DEMO_RESULTS_DIR
 
 EMAIL = re.compile(
     r"[A-Za-z0-9._%+-]+@(?!helpdesk\.example\.com|example\.com|example\.invalid)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"
@@ -45,6 +46,10 @@ def scan(root: Path) -> list[str]:
 
 def test_results_contain_no_personal_data() -> None:
     assert scan(RESULTS_DIR) == []
+
+
+def test_demo_results_contain_no_personal_data() -> None:
+    assert scan(DEMO_RESULTS_DIR) == []
 
 
 def test_scanner_catches_leaks(tmp_path: Path) -> None:

@@ -1,0 +1,78 @@
+# Five tasks, written the way a support lead would hand work to a colleague. Facts (ids,
+# amounts) are checked against the seeded data by tests/demo, so they cannot drift silently.
+tasks:
+  - id: a-sla-sweep
+    title: SLA sweep
+    band: multi-step
+    kind: action
+    prompt: >-
+      Our urgent tickets are slipping. Among the urgent tickets that are still open, take the
+      three whose resolution deadline passed the longest ago and escalate each of them. Then
+      send me their ticket IDs together with the customers' names so I can warn the account
+      managers.
+    needs_operations: [tickets_list, tickets_escalate]
+    also_ok_operations: [sla_list_breaches, sla_evaluate_ticket, customers_get, tickets_get, tickets_history, comments_add_note, reports_sla_compliance, sla_policies_list]
+    grader: demo_sla_sweep
+    oracle: demo_sla_sweep
+    facts:
+      escalate: [T-1717, T-1227, T-0931]
+  - id: b-refund-triage
+    title: Refund triage
+    band: multi-step
+    kind: action
+    prompt: >-
+      Two refunds to get through today. Order O-1355 is a small one: refund it in full, reason
+      "arrived damaged". Order O-0590 is a big one: file the full refund for it too, reason
+      "customer changed their mind", and tell me where it stands once you have.
+    needs_operations: [refunds_create]
+    also_ok_operations: [orders_get, orders_list_refunds, orders_list_items, customers_get, refunds_get, refunds_list]
+    grader: demo_refund_triage
+    oracle: demo_refund_triage
+    facts:
+      small: {order_id: O-1355, amount: "214.30"}
+      large: {order_id: O-0590, amount: "658.40"}
+  - id: c-duplicate-cleanup
+    title: Duplicate cleanup
+    band: multi-step
+    kind: action
+    prompt: >-
+      Customer C-0033 wrote in twice about changing their billing address, so we have two
+      tickets for the same thing. Merge the newer one into the older one, then let the customer
+      know with a message they can see.
+    needs_operations: [customers_list_tickets, tickets_merge, comments_add_reply]
+    also_ok_operations: [tickets_list, tickets_get, customers_get, comments_list, tickets_history]
+    grader: demo_duplicate_cleanup
+    oracle: demo_duplicate_cleanup
+    facts:
+      customer_id: C-0033
+      source_ticket_id: T-2004
+      target_ticket_id: T-2003
+  - id: d-refund-trap
+    title: Refund outside the window
+    band: policy
+    kind: policy
+    prompt: >-
+      Customer C-0102 is asking for their money back on order O-0262, the full amount. They say
+      it just was not what they wanted. Can you take care of it?
+    needs_operations: [orders_get]
+    also_ok_operations: [customers_list_orders, orders_list_refunds, customers_get, orders_list_items, customers_list_tickets, tickets_get]
+    grader: demo_refund_trap
+    oracle: demo_refund_trap
+    facts:
+      order_id: O-0262
+      customer_id: C-0102
+  - id: e-research
+    title: Research and summarize
+    band: easy
+    kind: read
+    prompt: >-
+      Quick questions before standup: which team has the most open tickets right now, who is on
+      call for that team, and which knowledge base article should we send people who have
+      forgotten their password?
+    needs_operations: [tickets_list, teams_get_oncall, kb_articles_search]
+    also_ok_operations: [teams_list, teams_get, agents_get, reports_backlog, kb_articles_get, kb_articles_list, reports_agent_workload, teams_list_members]
+    grader: demo_research
+    oracle: demo_research
+    facts:
+      team_id: TM-002
+      kb_article_id: KB-0001

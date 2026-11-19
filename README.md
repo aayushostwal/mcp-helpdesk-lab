@@ -29,6 +29,7 @@ This repo is the place to measure that.
 | 2 | MCP server and the three tool designs | **Done** |
 | 3 | Benchmark harness and pilot | **Done** (see [Benchmark](#benchmark)) |
 | 4 | Full benchmark run and results | **Done** (see [Benchmark results](#benchmark-results)) |
+| extra | Fresh agent demo: five delegated tasks, transcripts and screenshots | **Done** (see [docs/demo.md](docs/demo.md)) |
 
 The full plan is in [docs/DESIGN.md](docs/DESIGN.md).
 
@@ -135,7 +136,8 @@ src/helpdesk/        the API: api/ (routers, schemas), services/, repositories/,
 src/helpdesk_mcp/    MCP server: variants, executor, BM25 search, resources, prompts, CLI
 bench/               benchmark: tasks/ (20 YAML tasks, graders, oracles, fixtures.json from the
                      seed), harness/ (runner, stream parser, report), results/
-tests/               unit/, integration/, mcp/ and bench/
+demo/                fresh-agent demo: tasks.yaml, graders, runner, renderer, results/, screenshots/
+tests/               unit/, integration/, mcp/, bench/ and demo/
 scripts/             export_openapi.py, seed.py, mcp_token_report.py
 docs/                architecture, API, operations, decision records
 openapi.json         the committed API contract (CI fails if it is stale)
@@ -228,6 +230,7 @@ Rebuild the report with `make bench-report`.
 - [docs/DESIGN.md](docs/DESIGN.md): the full design, including the MCP server and benchmark
 - [docs/benchmark.md](docs/benchmark.md): benchmark methodology, fairness rules, how to reproduce,
   threats to validity
+- [docs/demo.md](docs/demo.md): the fresh-agent demo (five delegated tasks, results, screenshots)
 
 ## Known limits
 

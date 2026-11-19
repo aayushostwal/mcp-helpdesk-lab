@@ -55,7 +55,7 @@ packages = ["src/helpdesk", "src/helpdesk_mcp"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests", "scripts", "bench"]
+src = ["src", "tests", "scripts", "bench", "demo"]
 extend-exclude = ["src/helpdesk/migrations/versions"]
 
 [tool.ruff.lint]
@@ -68,13 +68,14 @@ ignore = ["S101", "B008", "RUF012", "S311"]
 "src/helpdesk/api/routers/*.py" = ["E501"]
 "src/helpdesk/seeding.py" = ["E501"]
 "bench/**" = ["E501", "S603", "S607", "S108"]
+"demo/**" = ["E501", "S603", "S607", "S108", "SLF001"]
 "bench/harness/cli.py" = ["B008"]
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
-files = ["src", "tests", "scripts", "bench"]
+files = ["src", "tests", "scripts", "bench", "demo"]
 exclude = ["src/helpdesk/migrations/versions"]
 
 [tool.pytest.ini_options]
@@ -85,9 +86,9 @@ addopts = "-ra"
 filterwarnings = ["error::RuntimeWarning"]
 
 [tool.coverage.run]
-source = ["src/helpdesk", "src/helpdesk_mcp", "bench"]
+source = ["src/helpdesk", "src/helpdesk_mcp", "bench", "demo"]
 concurrency = ["thread", "greenlet"]
-omit = ["src/helpdesk/migrations/*", "src/helpdesk_mcp/__main__.py", "bench/__main__.py"]
+omit = ["src/helpdesk/migrations/*", "src/helpdesk_mcp/__main__.py", "bench/__main__.py", "demo/__main__.py", "demo/shot.py"]
 
 [tool.coverage.report]
 fail_under = 90
@@ -95,5 +96,5 @@ show_missing = true
 skip_covered = true
 
 [[tool.mypy.overrides]]
-module = ["jsonschema", "jsonschema.*"]
+module = ["jsonschema", "jsonschema.*", "playwright", "playwright.*"]
 ignore_missing_imports = true

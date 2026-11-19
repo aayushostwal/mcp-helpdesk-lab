@@ -12,7 +12,7 @@ VARIANT ?= per-endpoint
 MCP_ARGS ?=
 export DATABASE_URL
 
-.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check mcp inspector tool-sizes bench-check bench-pilot bench-dry bench-report docker clean
+.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check mcp inspector tool-sizes bench-check bench-pilot bench-dry bench-report demo demo-render demo-check docker clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -35,6 +35,7 @@ test: ## Run the test suite with coverage gates (90% overall, for the MCP server
 	uv run pytest --cov --cov-report=term-missing:skip-covered
 	uv run coverage report --include="src/helpdesk_mcp/*" --fail-under=90 --skip-covered
 	uv run coverage report --include="bench/*" --fail-under=90 --skip-covered
+	uv run coverage report --include="demo/*" --fail-under=90 --skip-covered
 
 cov: ## Test suite with an HTML coverage report
 	uv run pytest --cov --cov-report=html
@@ -81,6 +82,15 @@ bench-dry: ## Full pipeline with a fake claude (no model, no cost); results go t
 
 bench-report: ## Rebuild summary.csv, summary.md and the charts from bench/results
 	uv run python -m bench report
+
+demo-check: ## Prove every demo task is solvable (scripted oracle) and fails when nothing is done
+	uv run python -m demo check
+
+demo: ## Run the five demo tasks under both setups (10 real Claude Code runs on your login, sonnet)
+	uv run python -m demo run
+
+demo-render: ## Rebuild demo/screenshots from demo/results (needs Playwright, see docs/demo.md)
+	uv run python -m demo render
 
 docker: ## Build the API image
 	docker build -t mcp-helpdesk-lab:dev .
