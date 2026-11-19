@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  UV_FROZEN: "1"
+
+jobs:
+  static:
+    name: Lint and types
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - run: uv run ruff check .
+      - run: uv run ruff format --check .
+      - run: uv run mypy
+
+  test-sqlite:
+    name: Tests (SQLite) and OpenAPI drift
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - run: uv run pytest --cov --cov-report=term-missing:skip-covered
+      - name: openapi.json is current
+        run: uv run python scripts/export_openapi.py --check
+
+  test-postgres:
+    name: Integration tests (PostgreSQL)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: helpdesk
+          POSTGRES_PASSWORD: helpdesk
+          POSTGRES_DB: helpdesk
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U helpdesk -d helpdesk"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgresql+asyncpg://helpdesk:helpdesk@localhost:5432/helpdesk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --all-extras
+      - name: Integration suite on PostgreSQL
+        run: uv run pytest tests/integration --no-cov
+      - name: Migrations and seed on PostgreSQL
+        env:
+          DATABASE_URL: postgresql+asyncpg://helpdesk:helpdesk@localhost:5432/helpdesk_migrate
+        run: |
+          PGPASSWORD=helpdesk psql -h localhost -U helpdesk -d helpdesk -c "CREATE DATABASE helpdesk_migrate"
+          uv run helpdesk migrate
+          uv run helpdesk seed --fixtures /tmp/fixtures.json
+          uv run helpdesk create-api-key --name ci --scopes admin > /dev/null
+
+  docker:
+    name: Docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: mcp-helpdesk-lab:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Container starts and answers /healthz
+        run: |
+          docker run -d --name api -p 8000:8000 \
+            -e HELPDESK_DATABASE_URL=sqlite+aiosqlite:////tmp/ci.db mcp-helpdesk-lab:ci
+          for i in $(seq 1 30); do
+            curl -fsS http://localhost:8000/healthz && exit 0
+            sleep 1
+          done
+          docker logs api
+          exit 1

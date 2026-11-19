@@ -1,0 +1,35 @@
+# API + PostgreSQL for local use. The credentials below are for local development only.
+#
+#   docker compose up --build                       # start db and api
+#   docker compose run --rm api helpdesk seed       # optional synthetic data
+#   docker compose run --rm api helpdesk create-api-key --name local --scopes admin
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: helpdesk
+      POSTGRES_PASSWORD: helpdesk
+      POSTGRES_DB: helpdesk
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U helpdesk -d helpdesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      HELPDESK_DATABASE_URL: postgresql+asyncpg://helpdesk:helpdesk@db:5432/helpdesk
+      HELPDESK_ENVIRONMENT: dev
+      # Set to the as_of printed by `helpdesk seed` when you use seeded data:
+      # HELPDESK_FROZEN_TIME: "2026-06-01T12:00:00+00:00"
+    ports:
+      - "8000:8000"
+
+volumes:
+  pgdata:
