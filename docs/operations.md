@@ -105,7 +105,8 @@ level.
 | `helpdesk_http_requests_total` | counter | `method`, `route`, `status` |
 | `helpdesk_http_request_duration_seconds` | histogram | `method`, `route` |
 
-Unmatched paths share the route label `unmatched`.
+Unmatched paths share the route label `unmatched`. Replayed idempotent responses are answered
+before routing and are counted under the label `idempotent_replay`.
 
 Useful queries:
 

@@ -30,10 +30,14 @@ def route_template(scope: Scope) -> str:
 
     Rebuilt from the path and the matched path parameters so it does not depend on router
     internals (FastAPI includes routers lazily, so ``scope['route'].path`` lacks the prefix).
-    Unmatched requests share one label so scanners cannot blow up metric cardinality.
+    Unmatched requests share one label so scanners cannot blow up metric cardinality, and
+    replays of stored idempotent responses have their own label.
     """
     if scope.get("route") is None:
-        return "unmatched"
+        # Replayed idempotent responses are answered before routing, so they have no route.
+        return (
+            "idempotent_replay" if scope.get("state", {}).get("idempotent_replay") else "unmatched"
+        )
     names_by_value = {str(v): k for k, v in scope.get("path_params", {}).items()}
     segments = [
         "{" + names_by_value[seg] + "}" if seg in names_by_value else seg
@@ -159,6 +163,7 @@ class IdempotencyMiddleware:
                 )
                 await response(scope, receive, send)
                 return
+            scope.setdefault("state", {})["idempotent_replay"] = True
             await self._replay(record, send)
             return
 

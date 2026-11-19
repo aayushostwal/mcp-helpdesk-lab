@@ -157,6 +157,8 @@ async def test_refund_idempotency_prevents_double_refund(
     a = await client.post("/v1/refunds", json=body, headers=headers)
     b = await client.post("/v1/refunds", json=body, headers=headers)
     assert a.json() == b.json() and b.headers["idempotent-replayed"] == "true"
+    metrics = (await client.get("/metrics")).text
+    assert 'route="idempotent_replay"' in metrics
     assert len((await client.get("/v1/refunds", headers=agent)).json()["items"]) == 1
 
 
