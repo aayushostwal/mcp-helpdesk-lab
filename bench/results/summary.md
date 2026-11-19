@@ -78,6 +78,28 @@ Per-task pass rates by variant: `summary_by_task.csv`.
 | search-call | haiku | 60 | 56/60 (84% to 97%) | 32576 | 9.0 | 0.0021 | 0.08 |
 | search-call | sonnet | 60 | 60/60 (94% to 100%) | 22963 | 8.6 | 0.0283 | 0.07 |
 
+## Turns and cache
+
+Medians per variant and model over graded runs (latest grade per run; n = runs in the cell). Cache-read and cache-write are the prompt-cache tokens Claude Code reports.
+
+| variant | model | n | median turns | median cache-read tokens | median cache-write tokens | median wall s | median CLI cost USD |
+|---|---|---|---|---|---|---|---|
+| per-endpoint-10 | haiku | 30 | 3.0 | 19238 | 4804 | 6.6 | 0.001 |
+| per-endpoint-10 | sonnet | 30 | 3.0 | 17414 | 3706 | 6.2 | 0.020 |
+| per-endpoint-25 | haiku | 60 | 3.0 | 31988 | 4740 | 5.3 | 0.001 |
+| per-endpoint-25 | sonnet | 60 | 3.0 | 30250 | 3757 | 5.9 | 0.021 |
+| per-endpoint-50 | haiku | 60 | 3.5 | 52168 | 4989 | 5.9 | 0.002 |
+| per-endpoint-50 | sonnet | 60 | 3.5 | 50436 | 3900 | 6.2 | 0.024 |
+| per-endpoint-100 | haiku | 60 | 4.0 | 90204 | 4951 | 6.0 | 0.002 |
+| per-endpoint-100 | sonnet | 60 | 3.5 | 88414 | 3872 | 6.2 | 0.028 |
+| per-endpoint-100+client-tool-search | haiku | 60 | 4.0 | 25074 | 7792 | 7.2 | 0.002 |
+| per-endpoint-100+client-tool-search | sonnet | 60 | 4.0 | 22146 | 6505 | 8.7 | 0.034 |
+| toolsets | haiku | 60 | 4.0 | 26681 | 5078 | 6.1 | 0.002 |
+| toolsets | sonnet | 60 | 4.0 | 24935 | 3988 | 6.6 | 0.023 |
+| search-call | haiku | 60 | 7.0 | 26659 | 6632 | 9.0 | 0.002 |
+| search-call | sonnet | 60 | 6.0 | 17623 | 5144 | 8.6 | 0.028 |
+
+
 ## Failed runs
 
 | variant | model | task | reason |

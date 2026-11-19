@@ -140,7 +140,7 @@ def test_full_report_writes_csv_markdown_and_six_charts(tmp_path: Path) -> None:
         + "\n",
     )
     info = build_report(tmp_path)
-    assert len(info["charts"]) == 7
+    assert len(info["charts"]) == 8
     for name in info["charts"]:
         png = (tmp_path / "charts" / name).read_bytes()
         assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 5000
@@ -206,6 +206,7 @@ def test_charts_return_false_without_data(tmp_path: Path) -> None:
         report.chart_wall,
         report.chart_wrong_calls,
         report.chart_cost,
+        report.chart_turns_cache,
     ):
         assert not fn([], tmp_path / "x.png")
 
@@ -213,3 +214,48 @@ def test_charts_return_false_without_data(tmp_path: Path) -> None:
 @pytest.mark.parametrize("variant", ["per-endpoint-100+client-tool-search", "per-endpoint-25"])
 def test_labels(variant: str) -> None:
     assert "\n" in report._label(variant)
+
+
+def _row(variant: str, model: str, task: str, **kw: Any) -> dict[str, Any]:
+    base: dict[str, Any] = {
+        "variant": variant,
+        "model_requested": model,
+        "task_id": task,
+        "repeat": 1,
+        "status": "ok",
+        "pass": True,
+        "num_turns": 4,
+        "cache_read_tokens": 1000,
+        "cache_creation_tokens": 100,
+        "wall_ms": 10000,
+        "total_cost_usd": 0.05,
+    }
+    return {**base, **kw}
+
+
+def test_turns_and_cache_medians_use_graded_runs_only() -> None:
+    rows = [
+        _row("toolsets", "haiku", "t1", num_turns=3, cache_read_tokens=1000, wall_ms=8000),
+        _row("toolsets", "haiku", "t2", num_turns=5, cache_read_tokens=3000, wall_ms=12000),
+        _row("toolsets", "haiku", "t3", num_turns=9, cache_read_tokens=9000, wall_ms=30000),
+        _row("toolsets", "haiku", "t4", num_turns=99, **{"pass": None}),  # not graded: ignored
+        _row("search-call", "sonnet", "t1", total_cost_usd=None),
+    ]
+    out = {(r["variant"], r["model"]): r for r in report.turns_cache_rows(rows)}
+    cell = out[("toolsets", "haiku")]
+    assert cell["n"] == 3 and cell["turns"] == 5 and cell["cache_read"] == 3000
+    assert cell["wall_s"] == 12.0 and cell["cache_write"] == 100 and cell["cost"] == 0.05
+    assert out[("search-call", "sonnet")]["cost"] is None
+    text = "\n".join(report.turns_cache_markdown(rows))
+    assert "## Turns and cache" in text and "| toolsets | haiku | 3 | 5.0 | 3000 |" in text
+    assert "No graded runs yet." in "\n".join(report.turns_cache_markdown([]))
+
+
+def test_turns_and_cache_in_report_outputs_and_image(tmp_path: Path) -> None:
+    write_results(tmp_path)
+    info = build_report(tmp_path)
+    assert "8-turns-and-cache.png" in info["charts"]
+    png = (tmp_path / "charts" / "8-turns-and-cache.png").read_bytes()
+    assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 5000
+    assert "## Turns and cache" in (tmp_path / "summary.md").read_text()
+    assert "## Turns and cache" in (tmp_path / "KEY_NUMBERS.md").read_text()

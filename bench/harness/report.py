@@ -883,7 +883,140 @@ CHARTS: list[tuple[str, str]] = [
     ("5-wrong-calls-ambiguous.png", "wrong"),
     ("6-cost-per-task.png", "cost"),
     ("7-pass-rate-by-variant.png", "overall"),
+    ("8-turns-and-cache.png", "turns"),
 ]
+
+
+# ------------------------------------------------------------------------- turns and cache
+TURNS_CACHE_HEADER = [
+    "variant",
+    "model",
+    "n",
+    "median turns",
+    "median cache-read tokens",
+    "median cache-write tokens",
+    "median wall s",
+    "median CLI cost USD",
+]
+
+
+def turns_cache_rows(tasks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per variant and model: medians of turns, cache tokens, wall time and CLI cost.
+
+    Uses the latest grade of every graded run (``tasks`` already holds one row per run key).
+    """
+    done = graded(tasks)
+    out: list[dict[str, Any]] = []
+    for variant in _ordered({r["variant"] for r in done}):
+        for model in sorted({r["model_requested"] for r in done if r["variant"] == variant}):
+            cell = [r for r in done if r["variant"] == variant and r["model_requested"] == model]
+
+            def med(field: str, cell: list[dict[str, Any]] = cell) -> float | None:
+                return median([r[field] for r in cell if r.get(field) is not None])
+
+            wall = med("wall_ms")
+            out.append(
+                {
+                    "variant": variant,
+                    "model": model,
+                    "n": len(cell),
+                    "turns": med("num_turns"),
+                    "cache_read": med("cache_read_tokens"),
+                    "cache_write": med("cache_creation_tokens"),
+                    "wall_s": None if wall is None else wall / 1000,
+                    "cost": med("total_cost_usd"),
+                }
+            )
+    return out
+
+
+def turns_cache_cells(rows: list[dict[str, Any]]) -> list[list[str]]:
+    return [
+        [
+            r["variant"],
+            r["model"],
+            str(r["n"]),
+            _fmt(r["turns"], 1),
+            _fmt(r["cache_read"]),
+            _fmt(r["cache_write"]),
+            _fmt(r["wall_s"], 1),
+            "" if r["cost"] is None else f"{r['cost']:.3f}",
+        ]
+        for r in rows
+    ]
+
+
+def turns_cache_markdown(tasks: list[dict[str, Any]]) -> list[str]:
+    rows = turns_cache_rows(tasks)
+    out = [
+        "## Turns and cache",
+        "",
+        "Medians per variant and model over graded runs (latest grade per run; n = runs in the "
+        "cell). Cache-read and cache-write are the prompt-cache tokens Claude Code reports.",
+        "",
+    ]
+    out.append(
+        _md_table(TURNS_CACHE_HEADER, turns_cache_cells(rows)) if rows else "No graded runs yet."
+    )
+    return [*out, ""]
+
+
+def chart_turns_cache(tasks: list[dict[str, Any]], path: Path) -> bool:
+    """A table rendered as an image (same numbers as the markdown table)."""
+    rows = turns_cache_rows(tasks)
+    if not rows:
+        return False
+    cells = [
+        [c[0].replace(CLIENT_TOOL_SEARCH_SUFFIX, " + tool search"), *c[1:]]
+        for c in turns_cache_cells(rows)
+    ]
+    header = ["variant", "model", "n", "turns", "cache read", "cache write", "wall s", "cost $"]
+    height = 0.33 * (len(cells) + 1)
+    fig = plt.figure(figsize=(8.0, height + 0.9))
+    ax = fig.add_axes((0.01, 0.01, 0.98, height / (height + 0.9)))
+    ax.axis("off")
+    table = ax.table(
+        cellText=cells,
+        colLabels=header,
+        bbox=(0, 0, 1, 1),
+        cellLoc="right",
+        colWidths=[0.31, 0.08, 0.05, 0.08, 0.14, 0.14, 0.1, 0.1],
+    )
+    table.auto_set_font_size(False)
+    table.set_fontsize(8.5)
+    for (row, col), cell in table.get_celld().items():
+        cell.set_edgecolor("#E0E0E0")
+        cell.set_linewidth(0.6)
+        cell.set_facecolor(SURFACE)
+        if col < 2:
+            cell.set_text_props(ha="left")
+            cell._loc = "left"
+        if row == 0:
+            cell.set_text_props(fontweight="bold", color=INK)
+            cell.set_edgecolor(INK)
+        else:
+            cell.set_text_props(color=INK)
+    fig.text(
+        0.01,
+        0.985,
+        "Turns and cache: medians per variant and model",
+        fontsize=12,
+        fontweight="bold",
+        color=INK,
+        va="top",
+    )
+    fig.text(
+        0.01,
+        0.945,
+        f"Graded runs, latest grade per run; n per row. {sum(r['n'] for r in rows)} runs in all.",
+        fontsize=8.5,
+        color=MUTED,
+        va="top",
+    )
+    fig.patch.set_facecolor(SURFACE)
+    fig.savefig(path, dpi=DPI, facecolor=SURFACE, bbox_inches="tight", pad_inches=0.25)
+    plt.close(fig)
+    return True
 
 
 # -------------------------------------------------------------------------------- markdown
@@ -1025,6 +1158,7 @@ def build_markdown(
         if rows
         else "No graded task runs yet."
     )
+    out += ["", *turns_cache_markdown(tasks)]
     failed = [r for r in done if not r["pass"]]
     if failed:
         out += ["", "## Failed runs", ""]
@@ -1214,6 +1348,7 @@ def build_key_numbers(
         ),
         "",
     ]
+    out += [*turns_cache_markdown(tasks)]
     if probe:
         out += ["## Tool search probe (sonnet, first request tokens)", ""]
         out.append(
@@ -1283,6 +1418,7 @@ def build_report(results_dir: Path) -> dict[str, Any]:
         "overall": lambda p: chart_pass_overall(tasks, p),
         "wrong": lambda p: chart_wrong_calls(tasks, p),
         "cost": lambda p: chart_cost(tasks, p),
+        "turns": lambda p: chart_turns_cache(tasks, p),
     }
     written = [name for name, key in CHARTS if makers[key](charts_dir / name)]
     return {"charts": written, "tasks": len(tasks), "baseline": len(baseline)}
