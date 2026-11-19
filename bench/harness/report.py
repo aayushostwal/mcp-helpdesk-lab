@@ -852,35 +852,13 @@ def chart_cost(tasks: list[dict[str, Any]], path: Path) -> bool:
             r["total_cost_usd"] for r in done if r["variant"] == v and r["model_requested"] == m
         ]
 
-    def mean_of(v: str, m: str) -> float | None:
-        xs = vals(v, m)
-        return sum(xs) / len(xs) if xs else None
-
     _grouped_bars(
         ax,
         variants,
         models,
         lambda v, m: median(vals(v, m)),
         lambda y: f"${y:.4f}",
-        label_y=mean_of,
     )
-    width = 0.8 / len(models)
-    for j, model in enumerate(models):
-        for i, v in enumerate(variants):
-            xs = vals(v, model)
-            if xs:
-                ax.plot(
-                    i + (j - (len(models) - 1) / 2) * width,
-                    sum(xs) / len(xs),
-                    "D",
-                    color="white",
-                    markeredgecolor=INK,
-                    markersize=6,
-                    zorder=5,
-                    label="mean" if (i, j) == (0, 0) else None,
-                )
-    top = max(sum(vals(v, m)) / len(vals(v, m)) for v in variants for m in models if vals(v, m))
-    ax.set_ylim(0, max(ax.get_ylim()[1], top * 1.1))
     _n_ticks(ax, variants, done)
     ax.set_xlabel("Tool design; n = runs per bar", color=INK, fontsize=10.5)
     ax.set_ylabel("CLI-reported cost per task (USD)", color=INK, fontsize=11)
@@ -890,8 +868,8 @@ def chart_cost(tasks: list[dict[str, Any]], path: Path) -> bool:
         fig,
         ax,
         "Cost per task",
-        "Bar and label = median. Diamond = mean, which a few long runs pull up.\n"
-        "List-price equivalent, as reported by Claude Code; not a bill.",
+        "Median per task. List-price equivalent, as reported by Claude Code;\n"
+        "not a bill. Means are in KEY_NUMBERS.md.",
         path,
     )
     return True
