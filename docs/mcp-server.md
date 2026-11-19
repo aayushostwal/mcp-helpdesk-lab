@@ -91,6 +91,11 @@ counts):
 | toolsets | 8 | 12.9 kB | 3,200 |
 | search-call | 3 | 1.2 kB | 300 |
 
+The bytes / 4 estimate is low. Measured through Claude Code, the same tool lists added about
+27,300 tokens (per-endpoint, 100 tools), 6,100 (toolsets) and 1,400 (search-call) to the first
+request, roughly 1.9 to 4.8 times the estimate. Use the estimate only to compare variants, and
+see [benchmark.md](benchmark.md) for the measured numbers.
+
 ### per-endpoint
 
 Each operation in `openapi.json` becomes one tool. Nothing is trimmed by hand, so what the
