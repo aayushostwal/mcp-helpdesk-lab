@@ -37,6 +37,10 @@ jobs:
       - run: uv run pytest --cov --cov-report=term-missing:skip-covered
       - name: MCP server coverage is at least 90%
         run: uv run coverage report --include="src/helpdesk_mcp/*" --fail-under=90 --skip-covered
+      - name: Benchmark coverage is at least 90%
+        run: uv run coverage report --include="bench/*" --fail-under=90 --skip-covered
+      - name: Benchmark dry run (fake claude, no model calls)
+        run: uv run python -m bench run --matrix pilot --dry-run --workers 2
       - name: openapi.json is current
         run: uv run python scripts/export_openapi.py --check
 

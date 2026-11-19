@@ -35,3 +35,20 @@ All notable changes are recorded here. The format follows
 ### Planned
 
 - Phase 3: benchmark harness.
+
+- Benchmark harness (phase 3), `python -m bench`: runs headless Claude Code (`claude -p`, on the
+  user's login, one fresh process per run) against a per-run copy of the seeded database and its
+  own API process; 20 tasks in four bands with deterministic graders and scripted oracles;
+  resumable matrix runner with a worker pool, bounded retries for infrastructure errors only,
+  hard process-group kill on timeout; context-cost baselines; stream-json parser; report with
+  `summary.csv`, `summary.md` and six PNG charts; `--dry-run` with a fake `claude` for CI;
+  `probe-tool-search` to measure the `ENABLE_TOOL_SEARCH` behaviour.
+- `docs/benchmark.md`, `make bench-check`, `make bench-pilot`, `make bench-dry`,
+  `make bench-report`, a bench coverage gate (90%) and a dry run in CI.
+- Pilot results in `bench/results/` (haiku, 15 task runs, plus context baselines).
+
+### Changed
+
+- `ALWAYS_INCLUDED` in `helpdesk_mcp.subset` now starts with exactly the operations the benchmark
+  tasks need, so every task is solvable at 25, 50 and 100 tools (ten of twenty are not at 10).
+  The tool lists for `--tool-count` 10, 25 and 50 change; `docs/tool-list-sizes.md` is regenerated.

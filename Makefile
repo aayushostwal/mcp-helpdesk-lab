@@ -12,7 +12,7 @@ VARIANT ?= per-endpoint
 MCP_ARGS ?=
 export DATABASE_URL
 
-.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check mcp inspector tool-sizes docker clean
+.PHONY: help install lint fmt typecheck test cov check serve seed migrate key openapi openapi-check mcp inspector tool-sizes bench-check bench-pilot bench-dry bench-report docker clean
 
 help: ## Show this help
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-14s %s\n", $$1, $$2}'
@@ -31,9 +31,10 @@ fmt: ## Auto-fix lint issues and format
 typecheck: ## mypy --strict
 	uv run mypy
 
-test: ## Run the test suite with a coverage gate (90% overall, 90% for the MCP server)
+test: ## Run the test suite with coverage gates (90% overall, for the MCP server and for bench)
 	uv run pytest --cov --cov-report=term-missing:skip-covered
 	uv run coverage report --include="src/helpdesk_mcp/*" --fail-under=90 --skip-covered
+	uv run coverage report --include="bench/*" --fail-under=90 --skip-covered
 
 cov: ## Test suite with an HTML coverage report
 	uv run pytest --cov --cov-report=html
@@ -67,6 +68,19 @@ inspector: ## Open the MCP Inspector on the server (needs npx and HELPDESK_MCP_A
 
 tool-sizes: ## Regenerate docs/tool-list-sizes.md (tool counts and approximate tokens per variant)
 	uv run python scripts/mcp_token_report.py -o docs/tool-list-sizes.md
+
+bench-check: ## Prove every benchmark task is solvable (scripted oracle) and fails when nothing is done
+	uv run python -m bench check-tasks
+
+bench-pilot: ## Run the pilot (real Claude Code runs on your login, haiku, about 27 runs) then the report
+	uv run python -m bench run --matrix pilot
+	uv run python -m bench report
+
+bench-dry: ## Full pipeline with a fake claude (no model, no cost); results go to bench/.runs/dry-run-results
+	uv run python -m bench run --matrix pilot --dry-run --workers 3
+
+bench-report: ## Rebuild summary.csv, summary.md and the charts from bench/results
+	uv run python -m bench report
 
 docker: ## Build the API image
 	docker build -t mcp-helpdesk-lab:dev .
