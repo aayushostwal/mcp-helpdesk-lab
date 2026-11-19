@@ -97,9 +97,9 @@ In `demo/screenshots/`, built by `python -m demo render` from the stored results
 | `03-scoreboard.png` | Pass/fail, time, calls, tokens, cost and notes per task and setup, with totals. |
 | `04-inspector-instructions.png`, `-resources.png`, `-prompts.png`, `-tools-<setup>.png` | The data a real stdio session (Python MCP client) gets back from `helpdesk-mcp`: instructions, resources and templates, prompts, tool names. Plain pages, not a mock of the MCP Inspector. |
 
-Rendering needs Playwright. The project environment does not have it, so `demo/shot.py` runs under
-the interpreter configured in `demo/paths.py` (`PLAYWRIGHT_PYTHON`, a conda environment with
-Chromium installed); change that path for your machine.
+Rendering needs Playwright, which the project environment does not install. `demo/shot.py` runs
+under the interpreter named by the `DEMO_PLAYWRIGHT_PYTHON` environment variable (default: the
+current interpreter). Install it there with `pip install playwright && playwright install chromium`.
 
 ## Method notes and limits
 
