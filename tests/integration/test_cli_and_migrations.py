@@ -18,7 +18,9 @@ from helpdesk.cli import alembic_config, app
 from helpdesk.config import Settings, get_settings
 from helpdesk.models import Base
 
-runner = CliRunner()
+# Typer draws errors in a rich box that wraps and colours text depending on the terminal.
+# Pin a wide, colourless terminal so assertions on the message do not depend on where tests run.
+runner = CliRunner(env={"NO_COLOR": "1", "TERM": "dumb", "COLUMNS": "200", "TERMINAL_WIDTH": "200"})
 
 
 @pytest.fixture
