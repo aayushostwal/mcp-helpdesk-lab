@@ -978,7 +978,7 @@ def chart_turns_cache(tasks: list[dict[str, Any]], path: Path) -> bool:
     table = ax.table(
         cellText=cells,
         colLabels=header,
-        bbox=(0, 0, 1, 1),
+        bbox=matplotlib.transforms.Bbox.from_bounds(0, 0, 1, 1),
         cellLoc="right",
         colWidths=[0.31, 0.08, 0.05, 0.08, 0.14, 0.14, 0.1, 0.1],
     )
@@ -990,7 +990,6 @@ def chart_turns_cache(tasks: list[dict[str, Any]], path: Path) -> bool:
         cell.set_facecolor(SURFACE)
         if col < 2:
             cell.set_text_props(ha="left")
-            cell._loc = "left"
         if row == 0:
             cell.set_text_props(fontweight="bold", color=INK)
             cell.set_edgecolor(INK)
