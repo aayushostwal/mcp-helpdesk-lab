@@ -4,8 +4,10 @@ This is how the repo measures what the tool design does to tokens, latency, cost
 The agent is **headless Claude Code** (`claude -p`), the same client people use, run once per
 task in a fresh process. Everything that feeds an article number comes from `bench/results/`.
 
-Status: the harness and a **pilot** are done (phase 3). The full run is phase 4. The numbers in
-this file are pilot numbers; where the sample is too small to conclude anything, it says so.
+Status: the harness, a pilot and the **full matrix** are done. The tables in the Pilot results
+section are the pilot's; the full results are in `bench/results/` (`KEY_NUMBERS.md`,
+`summary.md`) and the section Post-hoc changes and known task flaws lists what was found after
+the full run. Where a sample is too small to conclude anything, the report says so.
 
 ## What is measured
 
@@ -284,7 +286,8 @@ make bench-pilot                  # 27 real runs, then the report
 uv run python -m bench run --matrix full --workers 3   # the full matrix (phase 4); resumable
 uv run python -m bench run --matrix full --models haiku --variants toolsets,search-call
 uv run python -m bench probe-tool-search              # the ENABLE_TOOL_SEARCH table above
-make bench-report                 # summary.csv, summary.md, charts/
+uv run python -m bench regrade --task multi-05-busiest-agent   # offline re-grade of a read task
+make bench-report                 # summary.csv, summary.md, summary_by_task.csv, KEY_NUMBERS.md, charts/
 ```
 
 Requirements: `claude` 2.1.x logged in (`claude` once, interactively), `uv`, macOS or Linux, no
@@ -299,19 +302,136 @@ result files are exercised without calling a model.
 
 ## Report
 
-`python -m bench report` reads the JSONL and writes `bench/results/summary.csv`,
-`summary.md` and PNG charts (1280 px wide, 2x of a 640 px layout, Okabe-Ito colours, n shown on
-each chart) in `bench/results/charts/`:
+`python -m bench report` reads the JSONL (latest grade per run) and writes, in
+`bench/results/`: `summary.csv`, `summary.md`, `summary_by_task.csv` (pass rate per task, variant
+and model), `KEY_NUMBERS.md` (plain tables of the headline numbers) and seven square PNG charts
+(1200 px, Okabe-Ito colours, n on every chart) in `charts/`:
 
 1. `1-context-tokens-vs-tool-count.png`: tokens added by the server vs tool count, toolsets and
-   search-call as reference lines, no-server baseline subtracted.
-2. `2-input-tokens-per-task.png`: median input tokens per task by variant.
-3. `3-pass-rate-by-band.png`: pass rate by variant and band with 95% Wilson intervals.
-4. `4-wall-time.png`: wall time distribution (box plot) by variant.
+   search-call as labelled reference lines, no-server baseline subtracted, the tool-search
+   variant as one extra marker.
+2. `2-input-tokens-per-task.png`: median input tokens per task by variant and model.
+3. `3-pass-rate-by-band.png`: pass rate by variant and band with 95% Wilson intervals
+   (all tasks, so the multi-step band includes multi-04).
+4. `4-wall-time.png`: median wall time with 25th to 75th percentile whiskers, by variant and model.
 5. `5-wrong-calls-ambiguous.png`: wrong writes and reads on the ambiguous tasks.
-6. `6-cost-per-1000-tasks.png`: CLI-reported cost per 1,000 tasks by variant and model.
+6. `6-cost-per-task.png`: median CLI-reported cost per task (diamond = mean).
+7. `7-pass-rate-by-variant.png`: pass rate per variant and model with Wilson intervals, all
+   tasks next to excluding the task with a seed flaw (axis starts at 70%, and says so).
+
+Pass rates are reported twice: over all tasks, and **excluding task with seed flaw**
+(`multi-04-merge-duplicate-customers`, see the next section).
 
 `summary.md` says plainly when a cell has fewer than 10 runs: "n is too small to conclude".
+
+## Post-hoc changes and known task flaws
+
+The full matrix was run first and these were found afterwards. Nothing was rerun. The runs
+themselves are untouched; where a grade changed, the old row stays in `runs.jsonl` and a new
+row is appended.
+
+### 1. The `multi-05-busiest-agent` grader was too strict (fixed, offline re-grade)
+
+The task asks for "their name, which team they are on, and how many active tickets". The grader
+required the team **name** (for example `Escalations`). Many correct answers gave the team **id**
+(`Derek Zuniga, TM-003, 17 active tickets`) and failed. This was a grader bug, not an agent
+error. The grader now accepts the team name **or** the team id; the agent-name check (any
+agent tied for most active tickets), the ticket-count check and the no-writes check are unchanged.
+One known looseness remains: the team may be any tied agent's team, not only the named
+agent's own.
+
+`python -m bench regrade --task multi-05-busiest-agent` re-graded the 36 stored runs from their
+stored final answer, offline, with the facts taken from a pristine seeded database (read tasks
+leave the database unchanged, so this is the state the agent saw). It refuses write tasks,
+whose grade depends on state that is not stored. A run that originally failed on an unexpected
+write stays failed (none did). Each new row has `regraded_from` (the original `run_id`),
+`grade_reason_original` and `pass_original`. **17 runs flipped fail to pass; none flipped pass
+to fail; 19 were unchanged (all already passing).**
+
+multi-05 passes (3 runs per cell), before and after:
+
+| variant | haiku before | haiku after | sonnet before | sonnet after |
+|---|---:|---:|---:|---:|
+| per-endpoint-25 | 0/3 | 3/3 | 3/3 | 3/3 |
+| per-endpoint-50 | 0/3 | 3/3 | 2/3 | 3/3 |
+| per-endpoint-100 | 1/3 | 3/3 | 3/3 | 3/3 |
+| per-endpoint-100+client-tool-search | 0/3 | 3/3 | 3/3 | 3/3 |
+| toolsets | 0/3 | 3/3 | 3/3 | 3/3 |
+| search-call | 1/3 | 3/3 | 3/3 | 3/3 |
+| **all** | **2/18** | **18/18** | **17/18** | **18/18** |
+
+(`per-endpoint-10` does not run this task: its operations are not in the 10 tools.) Over the
+whole matrix this moves the pass count from 729 to 746 of 780 graded runs. The before numbers
+are what the original rows say; the after numbers are what every table and chart now shows.
+
+### 2. `multi-04-merge-duplicate-customers` has a seed flaw (not fixed, reported)
+
+The prompt says the customers on T-2005 and T-2006 "look like the same person with two
+accounts". In the seed they share a **name** (Crystal Jenkins) but have **different e-mail and
+phone** (C-0499 and C-0500). Haiku looked, found the records did not clearly match, and did not
+merge: **0 of 18 passed, with no merge call in any of the 18 runs** (3 repeats in each of the
+6 variants that run this task: per-endpoint-25, -50, -100, -100 with client tool search,
+toolsets, search-call). Sonnet merged in **18 of 18** and added a caveat that the name was the
+only evidence.
+
+This is a task-data flaw: the premise is not supported by the data, and the same data is used in
+every variant, so it hits every variant equally and is not an effect of tool design. What it does
+show is a difference between the two models in following an instruction the data seems to
+contradict. The seed and the grader are left as they are, and the task is not rerun. It is
+not part of the per-endpoint-10 numbers (the task is not solvable at 10 tools). The report gives
+every pass rate with and without it; the "without" columns are labelled "excluding task with
+seed flaw".
+
+### 3. `ambig-03-senior-eyes` failures are tool-choice and judgement behaviour (kept)
+
+The task: "T-2007 is an outage and the customer is getting angry. Get more senior eyes on it."
+The grader wants the ticket escalated (`tickets.escalate`) and nothing else written. 16 of the
+42 graded runs of this task fail; they fall into three groups (counts from the stored tool
+calls and grade reasons):
+
+| variant | model | no escalation | escalated, plus extra reassign | escalated, plus extra note only |
+|---|---|---:|---:|---:|
+| per-endpoint-25 | haiku | 0 | 0 | 1 |
+| per-endpoint-25 | sonnet | 0 | 3 (2 of them also added a note) | 0 |
+| per-endpoint-50 | haiku | 0 | 2 | 0 |
+| per-endpoint-50 | sonnet | 3 | 0 | 0 |
+| per-endpoint-100 | sonnet | 3 | 0 | 0 |
+| per-endpoint-100+client-tool-search | haiku | 1 | 0 | 0 |
+| per-endpoint-100+client-tool-search | sonnet | 1 | 0 | 0 |
+| toolsets | sonnet | 1 | 0 | 0 |
+| search-call | haiku | 0 | 1 | 0 |
+| **total** | | **9** | **6** | **1** |
+
+Every other cell of this task passed 3 of 3 (per-endpoint-10, per-endpoint-100 haiku, toolsets
+haiku, search-call sonnet). Reading the failures:
+
+- **Extra reassign or note (7 runs)**: the agent escalated correctly and then also called
+  `tickets_assign` (to the Escalations on-call lead) and sometimes `comments_add_note`. The
+  prompt does not ask for either. These are real over-reach, and 6 of the 7 happened with the
+  25-tool and 50-tool servers.
+- **No escalation (9 runs)**: the agent read the ticket and its comments and declined, saying the
+  customer's last message is "That solved it, thank you", so the ticket does not match the
+  prompt. 8 of the 9 are sonnet. This is a reading of the data, not a tool mix-up, and it is
+  arguably reasonable: the seeded last comment on T-2007 does contradict "the customer is getting
+  angry". Treat it as a second, weaker data inconsistency in this task. It was not corrected and
+  the task was not excluded from any number.
+
+With 6 runs per variant (3 per model) and at most 5 failures in any one variant, the differences between
+variants on this task are within the intervals. The pattern (over-reach appears with 25 and 50
+tools, never with toolsets and rarely with search-call) is a hint, not a result.
+
+### 4. The grading rule: any extra state-changing write fails the run
+
+Every grader lists the writes it allows, and any other audit event fails the run, even when the
+requested change was made correctly (see Grading above). Across the whole matrix this rule
+produced **7 failures, all in ambig-03** (the 6 reassign and 1 note-only runs above;
+three failures in per-endpoint-25 sonnet, one per-endpoint-25 haiku, two per-endpoint-50
+haiku, one search-call haiku). It produced none on any other task. It also did **not** fail the
+**36 passing runs** that tried a forbidden write on the two policy tasks (an attempt to refund an
+old order or reopen a late ticket): the API refused each attempt, so the audit log shows nothing.
+Those attempts are counted as wrong-write calls in the report (43 runs have at least one:
+36 passing policy runs, 7 failing ambig-03 runs) but do not fail the run. The rule is strict on
+purpose; it also means a run that is correct and then tidies up with one more call fails.
 
 ## Privacy
 
