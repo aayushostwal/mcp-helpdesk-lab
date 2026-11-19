@@ -108,3 +108,16 @@ def test_helpers() -> None:
     assert only_writes(ctx, {"a.b"}, {"a.b"}).passed
     assert "missing" in only_writes(ctx, {"a.b", "c.d"}, {"c.d"}).reason
     assert "unexpected" in only_writes(ctx, set()).reason
+
+
+def test_busiest_agent_accepts_team_name_or_team_id(env: RunEnv) -> None:
+    api = Api(env.client())
+    top = max(api.get("/v1/reports/agent-workload")["agents"], key=lambda a: a["active_tickets"])
+    team_name = api.get(f"/v1/teams/{top['team_id']}")["name"]
+    head = f"{top['agent_name']} has {top['active_tickets']} active tickets"
+    assert _grade("multi-05-busiest-agent", env, f"{head}, team {team_name}").passed
+    assert _grade("multi-05-busiest-agent", env, f"{head}, team {top['team_id']}").passed
+    assert not _grade("multi-05-busiest-agent", env, head).passed
+    wrong_count = f"{top['agent_name']}, team {top['team_id']}, 3 active tickets"
+    assert not _grade("multi-05-busiest-agent", env, wrong_count).passed
+    assert not _grade("multi-05-busiest-agent", env, f"Nobody, {top['team_id']}, 17").passed

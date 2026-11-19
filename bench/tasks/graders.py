@@ -152,8 +152,10 @@ def busiest_agent(ctx: GradeContext) -> Grade:
     for agent in report["agents"]:
         if agent["active_tickets"] != top:
             continue
+        team_id = agent["team_id"]
+        # The team may be given by name or by id: the prompt asks "which team", not in what form.
         if agent["agent_name"].lower() in ctx.answer.lower() and contains_any(
-            ctx.answer, [teams[agent["team_id"]]]
+            ctx.answer, [teams[team_id], team_id]
         ):
             return no_writes(ctx)
     return Grade(False, "answer names no busiest agent together with their team")

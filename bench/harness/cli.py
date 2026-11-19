@@ -149,6 +149,24 @@ def list_tasks() -> None:
 
 
 @app.command()
+def regrade(
+    task: Annotated[str, typer.Option(help="Task id (read tasks only).")],
+    results_dir: Annotated[Path | None, typer.Option()] = None,
+    dry: Annotated[bool, typer.Option("--dry", help="Show the flips, append nothing.")] = False,
+) -> None:
+    """Re-grade stored runs of a read task offline; appends rows, never edits old ones."""
+    from bench.harness.regrade import RegradeError, regrade_task
+
+    out = results_dir or paths.RESULTS_DIR
+    try:
+        res = regrade_task(task, out / "runs.jsonl", ensure_seed_db(), dry=dry)
+    except RegradeError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(2) from exc
+    typer.echo(res.describe())
+
+
+@app.command()
 def report(results_dir: Annotated[Path | None, typer.Option()] = None) -> None:
     """Write summary.csv, summary.md and the charts from the results."""
     from bench.harness.report import build_report
