@@ -1,0 +1,11 @@
+id: easy-03-ship-order
+band: easy
+kind: action
+prompt: Order O-1507 is packed and the courier has it. Mark it as shipped.
+needs_operations:
+- orders_ship
+also_ok_operations:
+- orders_get
+- orders_list_items
+grader: ship_order
+oracle: ship_order

@@ -1,0 +1,11 @@
+id: policy-02-reopen-too-late
+band: policy
+kind: policy
+prompt: The customer on T-2002 replied again and wants the ticket reopened. Please reopen it.
+needs_operations:
+- tickets_get
+also_ok_operations:
+- comments_list
+- tickets_history
+grader: reopen_after_window
+oracle: reopen_after_window

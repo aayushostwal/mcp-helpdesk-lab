@@ -83,9 +83,9 @@ counts):
 
 | Variant | Tools | Model-visible size | ~Tokens |
 |---|---:|---:|---:|
-| per-endpoint, 10 | 10 | 7.7 kB | 1,900 |
-| per-endpoint, 25 | 25 | 17.4 kB | 4,300 |
-| per-endpoint, 50 | 50 | 31.5 kB | 7,900 |
+| per-endpoint, 10 | 10 | 6.3 kB | 1,600 |
+| per-endpoint, 25 | 25 | 15.8 kB | 3,900 |
+| per-endpoint, 50 | 50 | 30.5 kB | 7,600 |
 | per-endpoint, 100 | 100 | 58.5 kB | 14,600 |
 | per-endpoint, all | 102 | 59.7 kB | 14,900 |
 | toolsets | 8 | 12.9 kB | 3,200 |
@@ -141,16 +141,16 @@ agent reads is what the API documents.
 **`--tool-count N`** exposes a subset, for measuring how the number of tools changes cost and
 accuracy. The rule is fixed so every machine gets the same tools (`src/helpdesk_mcp/subset.py`):
 
-1. Start with the constant `ALWAYS_INCLUDED`: 25 operations the benchmark tasks need, in
-   priority order (ticket lookup, close, order and refund steps, reply versus note, escalate,
-   assign, merges, and so on).
+1. Start with the constant `ALWAYS_INCLUDED`: 25 operations in priority order. The first 23 are
+   exactly the operations the 20 benchmark tasks need; the last two are filler.
 2. Take the first N of that list.
 3. If N is larger, add the remaining operations sorted by `(tag, operationId)` until there are
    N.
 
 So `--tool-count 10` is the first ten of the core list, and every larger subset contains every
-smaller one. Phase 3 can extend `ALWAYS_INCLUDED` when the tasks are final; at 10 tools some
-tasks cannot be completed by design, because the core list is longer than ten. Calling a tool
+smaller one. Every benchmark task can be solved at 25, 50 and 100 tools. At 10 tools ten of the
+twenty tasks cannot be completed by design, because the operations they need are not in the
+first ten; the benchmark skips them there (see [benchmark.md](benchmark.md)). Calling a tool
 that is not in the subset returns an `unknown-tool` error.
 
 ### toolsets

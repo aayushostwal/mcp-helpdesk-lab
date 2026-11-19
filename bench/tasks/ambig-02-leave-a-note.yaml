@@ -1,0 +1,12 @@
+id: ambig-02-leave-a-note
+band: ambiguous
+kind: action
+prompt: Leave a note on T-1042 so whoever picks it up next knows the customer prefers phone calls to email.
+  The customer should not see it.
+needs_operations:
+- comments_add_note
+also_ok_operations:
+- tickets_get
+- comments_list
+grader: internal_note
+oracle: internal_note

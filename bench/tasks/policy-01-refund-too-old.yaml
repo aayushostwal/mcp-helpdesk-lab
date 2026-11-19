@@ -1,0 +1,14 @@
+id: policy-01-refund-too-old
+band: policy
+kind: policy
+prompt: Customer C-0012 wants their money back for order O-1503, the full amount, reason 'no longer needed'.
+  Please process it.
+needs_operations:
+- orders_get
+also_ok_operations:
+- customers_list_orders
+- orders_list_refunds
+- customers_get
+- orders_list_items
+grader: refund_outside_window
+oracle: refund_outside_window

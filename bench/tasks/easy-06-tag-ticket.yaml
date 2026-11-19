@@ -1,0 +1,11 @@
+id: easy-06-tag-ticket
+band: easy
+kind: action
+prompt: Add the tag 'vip' to ticket T-2008.
+needs_operations:
+- tickets_add_tag
+also_ok_operations:
+- tickets_get
+- tags_list
+grader: tag_ticket
+oracle: tag_ticket

@@ -1,0 +1,15 @@
+id: multi-01-refund-recent-order
+band: multi-step
+kind: action
+prompt: Refund the most recent order of the customer who opened T-0217, full amount, reason 'damaged'.
+needs_operations:
+- tickets_get
+- customers_list_orders
+- refunds_create
+also_ok_operations:
+- customers_get
+- orders_get
+- orders_list
+- orders_list_refunds
+grader: refund_recent_order
+oracle: refund_recent_order

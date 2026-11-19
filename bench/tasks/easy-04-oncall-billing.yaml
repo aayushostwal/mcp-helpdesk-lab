@@ -1,0 +1,11 @@
+id: easy-04-oncall-billing
+band: easy
+kind: read
+prompt: Who is on call for the Billing team right now? I just need their name.
+needs_operations:
+- teams_list
+- teams_get_oncall
+also_ok_operations:
+- teams_get
+grader: oncall_billing
+oracle: oncall_billing

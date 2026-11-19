@@ -1,0 +1,12 @@
+id: easy-02-find-kb-article
+band: easy
+kind: read
+prompt: A customer keeps asking how to reset their password. Which help-centre article covers that? Give
+  me the article ID and its title.
+needs_operations:
+- kb_articles_search
+also_ok_operations:
+- kb_articles_list
+- kb_articles_get
+grader: kb_lookup
+oracle: kb_lookup

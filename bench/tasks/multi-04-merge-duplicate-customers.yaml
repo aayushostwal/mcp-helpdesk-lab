@@ -1,0 +1,12 @@
+id: multi-04-merge-duplicate-customers
+band: multi-step
+kind: action
+prompt: The customers on T-2005 and T-2006 look like the same person with two accounts. Merge the customer
+  on T-2006 into the customer on T-2005.
+needs_operations:
+- tickets_get
+- customers_merge
+also_ok_operations:
+- customers_get
+grader: merge_customers
+oracle: merge_customers

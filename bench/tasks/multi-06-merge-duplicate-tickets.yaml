@@ -1,0 +1,13 @@
+id: multi-06-merge-duplicate-tickets
+band: multi-step
+kind: action
+prompt: T-2003 and T-2004 are duplicates from the same customer. Merge the newer ticket into the older
+  one.
+needs_operations:
+- tickets_get
+- tickets_merge
+also_ok_operations:
+- customers_list_tickets
+- tickets_list
+grader: merge_tickets
+oracle: merge_tickets

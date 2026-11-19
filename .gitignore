@@ -28,3 +28,4 @@ htmlcov/
 
 # Benchmark scratch space (results under bench/results/ are committed on purpose)
 bench/.runs/
+bench/.cache/

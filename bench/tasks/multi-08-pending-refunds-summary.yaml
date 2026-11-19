@@ -1,0 +1,12 @@
+id: multi-08-pending-refunds-summary
+band: multi-step
+kind: read
+prompt: How many refunds are waiting for approval right now, and what is the name of the customer on the
+  largest one?
+needs_operations:
+- refunds_list
+- customers_get
+also_ok_operations:
+- orders_get
+grader: pending_refund_summary
+oracle: pending_refund_summary

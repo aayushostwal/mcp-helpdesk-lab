@@ -1,0 +1,11 @@
+id: easy-01-close-ticket
+band: easy
+kind: action
+prompt: Please close ticket T-1042 with the note 'resolved by phone'.
+needs_operations:
+- tickets_close
+also_ok_operations:
+- tickets_get
+- comments_list
+grader: close_ticket
+oracle: close_ticket

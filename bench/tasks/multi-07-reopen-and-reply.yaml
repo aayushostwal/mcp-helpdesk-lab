@@ -1,0 +1,13 @@
+id: multi-07-reopen-and-reply
+band: multi-step
+kind: action
+prompt: The customer on T-2001 says our fix did not hold. Reopen the ticket and send them a message saying
+  'Sorry about that, we are looking again.'
+needs_operations:
+- tickets_reopen
+- comments_add_reply
+also_ok_operations:
+- tickets_get
+- comments_list
+grader: reopen_and_reply
+oracle: reopen_and_reply

@@ -31,6 +31,11 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
   "pre-commit>=3.8",
+  "types-pyyaml>=6.0.12.20261113",
+]
+bench = [
+    "matplotlib>=3.8",
+    "pyyaml>=6",
 ]
 
 [project.scripts]
@@ -50,7 +55,7 @@ packages = ["src/helpdesk", "src/helpdesk_mcp"]
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-src = ["src", "tests", "scripts"]
+src = ["src", "tests", "scripts", "bench"]
 extend-exclude = ["src/helpdesk/migrations/versions"]
 
 [tool.ruff.lint]
@@ -58,16 +63,18 @@ select = ["E", "F", "W", "I", "B", "UP", "SIM", "C4", "RUF", "S", "PT", "ASYNC",
 ignore = ["S101", "B008", "RUF012", "S311"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S104", "S105", "S106", "S101", "PT018", "E501"]
+"tests/**" = ["S104", "S105", "S106", "S101", "PT018", "E501", "SIM115"]
 "src/helpdesk/migrations/**" = ["N999"]
 "src/helpdesk/api/routers/*.py" = ["E501"]
 "src/helpdesk/seeding.py" = ["E501"]
+"bench/**" = ["E501", "S603", "S607", "S108"]
+"bench/harness/cli.py" = ["B008"]
 
 [tool.mypy]
 strict = true
 python_version = "3.12"
 plugins = ["pydantic.mypy"]
-files = ["src", "tests", "scripts"]
+files = ["src", "tests", "scripts", "bench"]
 exclude = ["src/helpdesk/migrations/versions"]
 
 [tool.pytest.ini_options]
@@ -78,9 +85,9 @@ addopts = "-ra"
 filterwarnings = ["error::RuntimeWarning"]
 
 [tool.coverage.run]
-source = ["src/helpdesk", "src/helpdesk_mcp"]
+source = ["src/helpdesk", "src/helpdesk_mcp", "bench"]
 concurrency = ["thread", "greenlet"]
-omit = ["src/helpdesk/migrations/*", "src/helpdesk_mcp/__main__.py"]
+omit = ["src/helpdesk/migrations/*", "src/helpdesk_mcp/__main__.py", "bench/__main__.py"]
 
 [tool.coverage.report]
 fail_under = 90

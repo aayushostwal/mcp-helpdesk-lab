@@ -1,0 +1,11 @@
+id: ambig-03-senior-eyes
+band: ambiguous
+kind: action
+prompt: T-2007 is an outage and the customer is getting angry. Get more senior eyes on it.
+needs_operations:
+- tickets_escalate
+also_ok_operations:
+- tickets_get
+- teams_list
+grader: escalate_ticket
+oracle: escalate_ticket

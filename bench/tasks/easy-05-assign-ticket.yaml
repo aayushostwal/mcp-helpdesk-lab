@@ -1,0 +1,11 @@
+id: easy-05-assign-ticket
+band: easy
+kind: action
+prompt: Ticket T-2008 has nobody on it. Please give it to agent A-0011.
+needs_operations:
+- tickets_assign
+also_ok_operations:
+- tickets_get
+- agents_get
+grader: assign_ticket
+oracle: assign_ticket

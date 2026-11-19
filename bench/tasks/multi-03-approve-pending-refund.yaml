@@ -1,0 +1,14 @@
+id: multi-03-approve-pending-refund
+band: multi-step
+kind: action
+prompt: There is a 750.00 refund waiting for sign-off on order O-1505. I am a team lead, so go ahead and
+  approve it.
+needs_operations:
+- refunds_list
+- refunds_approve
+also_ok_operations:
+- orders_list_refunds
+- refunds_get
+- orders_get
+grader: approve_pending_refund
+oracle: approve_pending_refund

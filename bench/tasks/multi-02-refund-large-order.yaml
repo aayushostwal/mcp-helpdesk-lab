@@ -1,0 +1,15 @@
+id: multi-02-refund-large-order
+band: multi-step
+kind: action
+prompt: Customer C-0007 wants their most recent order refunded in full, reason 'changed mind'. Please
+  file the refund.
+needs_operations:
+- customers_list_orders
+- refunds_create
+also_ok_operations:
+- customers_get
+- orders_get
+- orders_list
+- orders_list_refunds
+grader: refund_needs_approval
+oracle: refund_needs_approval

@@ -112,7 +112,7 @@ async def test_stdio_client_lists_and_calls() -> None:
     params = StdioServerParameters(
         command=COMMAND[0], args=[*COMMAND[1:], "--variant", "toolsets"], env=ENV
     )
-    errlog = Path(os.devnull).open("w")  # noqa: ASYNC230, SIM115
+    errlog = Path(os.devnull).open("w")  # noqa: ASYNC230
     try:
         async with (
             stdio_client(params, errlog=errlog) as (read, write),

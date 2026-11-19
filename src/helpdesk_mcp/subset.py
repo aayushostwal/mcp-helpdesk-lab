@@ -9,35 +9,40 @@ from __future__ import annotations
 
 from helpdesk_mcp.spec import Spec
 
-# Operations the benchmark tasks need (see bench/tasks/fixtures.json and docs/DESIGN.md section 6),
-# most important first. Phase 3 can extend this list. It is a priority order: a small N keeps
-# only the first N entries, so the first ten cover the most common task steps.
+# Operations the benchmark tasks need (bench/tasks/*.yaml, ``needs_operations``), most important
+# first. It is a priority order: a small N keeps only the first N entries. The first 23 entries are
+# exactly the union of every task's ``needs_operations``, so every task can be solved at 25, 50 and
+# 100 tools (a test in tests/bench checks this). The first ten were chosen to make as many tasks
+# as possible solvable at N=10 (ten of the twenty); the rest are unsolvable at N=10 by design and
+# the benchmark skips them there (docs/benchmark.md). The last two are filler to reach 25 tools.
 ALWAYS_INCLUDED: tuple[str, ...] = (
-    "tickets_get",  # read a ticket (almost every task starts here)
-    "tickets_list",  # find tickets by status, customer, SLA breach
-    "tickets_close",  # "close ticket T-1042 with a note"
+    "tickets_get",  # read a ticket (many tasks start here)
     "customers_list_orders",  # "the most recent order of the customer who opened T-0217"
-    "orders_get",  # order total, status, delivery date
     "refunds_create",  # refund tasks, including the policy cases
-    "refunds_approve",  # lead approval of refunds above 500.00
     "comments_add_reply",  # public reply (ambiguous: reply vs note)
     "comments_add_note",  # internal note (ambiguous: reply vs note)
     "tickets_escalate",  # escalate (ambiguous: escalate vs assign)
-    "tickets_assign",  # assign or reassign
+    "orders_cancel",  # cancel (ambiguous: cancel vs refund)
+    "orders_get",  # order total, status, delivery date
+    "tickets_close",  # "close ticket T-1042 with a note"
+    "kb_articles_search",  # knowledge base lookup
+    # Needed only by tasks that are unsolvable at N=10:
+    "orders_ship",
+    "tickets_assign",
+    "tickets_add_tag",
+    "refunds_list",
+    "refunds_approve",  # lead approval of refunds above 500.00
     "tickets_reopen",  # reopen inside and outside the 7-day window
     "tickets_merge",  # merge duplicate tickets
     "customers_merge",  # merge duplicate customers
     "customers_get",
-    "customers_list",
-    "orders_ship",
-    "orders_cancel",
-    "refunds_get",
-    "kb_articles_search",  # knowledge base lookup
-    "agents_list",  # find an agent or team member
+    "teams_list",
+    "teams_get",
+    "teams_get_oncall",
     "reports_agent_workload",  # busiest agent
-    "sla_list_breaches",  # SLA breach questions
-    "tickets_change_status",
-    "customers_list_tickets",
+    # Filler: plausible neighbours that no task needs.
+    "tickets_list",
+    "customers_list",
 )
 
 

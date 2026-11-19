@@ -1,0 +1,11 @@
+id: ambig-01-tell-the-customer
+band: ambiguous
+kind: action
+prompt: On T-2008, let the customer know we are checking and will get back to them by tomorrow.
+needs_operations:
+- comments_add_reply
+also_ok_operations:
+- tickets_get
+- comments_list
+grader: public_reply
+oracle: public_reply

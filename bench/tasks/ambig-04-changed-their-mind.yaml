@@ -1,0 +1,11 @@
+id: ambig-04-changed-their-mind
+band: ambiguous
+kind: action
+prompt: The customer who placed order O-1506 just changed their mind and does not want it any more. Sort
+  it out.
+needs_operations:
+- orders_cancel
+also_ok_operations:
+- orders_get
+grader: cancel_order
+oracle: cancel_order

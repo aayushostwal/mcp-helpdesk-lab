@@ -1,0 +1,14 @@
+id: multi-05-busiest-agent
+band: multi-step
+kind: read
+prompt: Who is our busiest agent right now? Give me their name, which team they are on, and how many active
+  tickets they have. If several agents are tied, name any one of them.
+needs_operations:
+- reports_agent_workload
+- teams_get
+also_ok_operations:
+- teams_list
+- agents_get
+- agents_list
+grader: busiest_agent
+oracle: busiest_agent
