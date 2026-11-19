@@ -9,6 +9,7 @@ from __future__ import annotations
 import csv
 import gzip
 import json
+import textwrap
 from collections import defaultdict
 from collections.abc import Callable, Sequence
 from pathlib import Path
@@ -21,7 +22,7 @@ import matplotlib.pyplot as plt
 
 from bench.harness.paths import BASELINE_JSONL, RUNS_JSONL  # noqa: F401
 from bench.harness.runner import INFRA_STATUSES, run_key
-from bench.harness.stats import median, wilson_interval
+from bench.harness.stats import median, quantile, wilson_interval
 from bench.harness.store import read_rows
 from bench.harness.variants import ALL_VARIANTS, CLIENT_TOOL_SEARCH_SUFFIX
 
@@ -57,7 +58,9 @@ VARIANT_COLOR = {
 MODEL_COLOR = {"haiku": PALETTE["sky"], "sonnet": PALETTE["blue"]}
 MIN_N_NOTE = 10  # below this many runs in a cell, no conclusion should be drawn
 DPI = 200
-FIGSIZE = (6.4, 4.8)  # 1280 x 960 px at 200 dpi, i.e. 2x of a 640 px wide layout
+FIGSIZE = (6.0, 6.0)  # 1200 x 1200 px at 200 dpi: square, so text stays large on a phone
+FLAWED_TASK = "multi-04-merge-duplicate-customers"  # seed flaw, see docs/benchmark.md
+CT_VARIANT = "per-endpoint-100" + CLIENT_TOOL_SEARCH_SUFFIX
 SURFACE = "#FFFFFF"
 INK = "#1F1F1F"
 MUTED = "#5A5A5A"
@@ -170,6 +173,16 @@ def summary_rows(
                         **cell_stats(cell),
                     }
                 )
+        if any(r["task_id"] == FLAWED_TASK for r in mine):
+            out.append(
+                {
+                    "kind": "task_excluding_task_with_seed_flaw",
+                    "variant": variant,
+                    "model": model,
+                    "band": "all",
+                    **cell_stats(exclude_flawed(mine)),
+                }
+            )
     for c in context:
         out.append(
             {
@@ -183,6 +196,88 @@ def summary_rows(
             }
         )
     return out
+
+
+def exclude_flawed(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    return [r for r in rows if r["task_id"] != FLAWED_TASK]
+
+
+def pass_table(done: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Pass counts per variant and model (and models pooled), with and without the flawed task."""
+    out: list[dict[str, Any]] = []
+    for variant in _ordered({r["variant"] for r in done}):
+        for model in [*sorted({r["model_requested"] for r in done}), "all"]:
+            cell = [
+                r
+                for r in done
+                if r["variant"] == variant and (model == "all" or r["model_requested"] == model)
+            ]
+            if not cell:
+                continue
+            row: dict[str, Any] = {"variant": variant, "model": model}
+            for key, rows in (("all", cell), ("excl", exclude_flawed(cell))):
+                n = len(rows)
+                k = sum(1 for r in rows if r["pass"])
+                lo, hi = wilson_interval(k, n)
+                row[key] = {"n": n, "passes": k, "rate": k / n if n else None, "lo": lo, "hi": hi}
+            out.append(row)
+    return out
+
+
+def by_task_rows(done: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Per-task pass rates by variant, per model and pooled."""
+    out: list[dict[str, Any]] = []
+    for task_id in sorted({r["task_id"] for r in done}):
+        mine = [r for r in done if r["task_id"] == task_id]
+        band = mine[0]["band"]
+        for variant in _ordered({r["variant"] for r in mine}):
+            for model in [*sorted({r["model_requested"] for r in mine}), "all"]:
+                cell = [
+                    r
+                    for r in mine
+                    if r["variant"] == variant and (model == "all" or r["model_requested"] == model)
+                ]
+                if not cell:
+                    continue
+                k = sum(1 for r in cell if r["pass"])
+                lo, hi = wilson_interval(k, len(cell))
+                out.append(
+                    {
+                        "task_id": task_id,
+                        "band": band,
+                        "variant": variant,
+                        "model": model,
+                        "n": len(cell),
+                        "passes": k,
+                        "pass_rate": k / len(cell),
+                        "wilson_lo": lo,
+                        "wilson_hi": hi,
+                    }
+                )
+    return out
+
+
+BY_TASK_FIELDS = [
+    "task_id",
+    "band",
+    "variant",
+    "model",
+    "n",
+    "passes",
+    "pass_rate",
+    "wilson_lo",
+    "wilson_hi",
+]
+
+
+def write_by_task_csv(path: Path, rows: list[dict[str, Any]]) -> None:
+    with path.open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=BY_TASK_FIELDS)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(
+                {k: round(r[k], 4) if isinstance(r[k], float) else r[k] for k in BY_TASK_FIELDS}
+            )
 
 
 CSV_FIELDS = [
@@ -231,14 +326,25 @@ def _style(ax: Any) -> None:
         ax.spines[side].set_visible(False)
     for side in ("left", "bottom"):
         ax.spines[side].set_color("#9A9A9A")
-    ax.tick_params(colors=MUTED, labelsize=9)
+    ax.tick_params(colors=MUTED, labelsize=10)
     ax.grid(axis="y", color="#E6E6E6", linewidth=0.8)
     ax.set_axisbelow(True)
 
 
 def _finish(fig: Any, ax: Any, title: str, subtitle: str, path: Path) -> None:
-    ax.set_title(title, loc="left", fontsize=12, fontweight="bold", color=INK, pad=22)
-    ax.text(0, 1.03, subtitle, transform=ax.transAxes, fontsize=8.5, color=MUTED, va="bottom")
+    subtitle = "\n".join(textwrap.wrap(subtitle.replace("\n", " "), 64))
+    lines = subtitle.count("\n") + 1
+    ax.set_title(title, loc="left", fontsize=13, fontweight="bold", color=INK, pad=14 + 14 * lines)
+    ax.text(
+        0,
+        1.02,
+        subtitle,
+        transform=ax.transAxes,
+        fontsize=9.5,
+        color=MUTED,
+        va="bottom",
+        linespacing=1.3,
+    )
     fig.patch.set_facecolor(SURFACE)
     fig.tight_layout()
     fig.savefig(path, dpi=DPI, facecolor=SURFACE)
@@ -246,9 +352,16 @@ def _finish(fig: Any, ax: Any, title: str, subtitle: str, path: Path) -> None:
 
 
 def _label(variant: str) -> str:
-    return variant.replace("per-endpoint-", "per-endpoint\n").replace(
-        CLIENT_TOOL_SEARCH_SUFFIX, "\n+ tool search"
-    )
+    """Short x tick label: the per-endpoint variants are named by their tool count."""
+    if variant.startswith("per-endpoint-"):
+        count = variant.removeprefix("per-endpoint-").removesuffix(CLIENT_TOOL_SEARCH_SUFFIX)
+        return f"{count}\ntools" + (
+            "\n+ tool\nsearch" if CLIENT_TOOL_SEARCH_SUFFIX in variant else ""
+        )
+    return variant.replace("search-call", "search-\ncall")
+
+
+VARIANT_AXIS_LABEL = "Tool design (numbers = per-endpoint server with that many tools)"
 
 
 def _new() -> tuple[Any, Any]:
@@ -257,12 +370,80 @@ def _new() -> tuple[Any, Any]:
     return fig, ax
 
 
+def _thousands(ax: Any, axis: str = "y", prefix: str = "") -> None:
+    fmt = matplotlib.ticker.FuncFormatter(lambda v, _: f"{prefix}{v:,.0f}")
+    (ax.yaxis if axis == "y" else ax.xaxis).set_major_formatter(fmt)
+
+
+def _grouped_bars(
+    ax: Any,
+    variants: list[str],
+    models: list[str],
+    value: Callable[[str, str], float | None],
+    text: Callable[[float], str],
+    label_y: Callable[[str, str], float | None] | None = None,
+) -> None:
+    width = 0.8 / len(models)
+    top = max(
+        [value(v, m) or 0 for v in variants for m in models]
+        + [(label_y(v, m) or 0) if label_y else 0 for v in variants for m in models]
+    )
+    for j, model in enumerate(models):
+        xs, ys, tops = [], [], []
+        for i, v in enumerate(variants):
+            y = value(v, model)
+            if y is not None:
+                xs.append(i + (j - (len(models) - 1) / 2) * width)
+                ys.append(y)
+                tops.append(max(y, (label_y(v, model) if label_y else y) or y))
+        bars = ax.bar(
+            xs,
+            ys,
+            width=width * 0.92,
+            color=MODEL_COLOR.get(model, PALETTE["grey"]),
+            label=model,
+        )
+        for bar, y, ty in zip(bars, ys, tops, strict=True):
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                ty + top * 0.015,
+                text(y),
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=INK,
+                rotation=90,
+            )
+    ax.set_ylim(0, top * 1.22)
+    ax.set_xticks(range(len(variants)))
+
+
+def _n_ticks(
+    ax: Any, variants: list[str], done: list[dict[str, Any]], per_model: bool = True
+) -> None:
+    labels = []
+    for v in variants:
+        sizes = sorted(
+            {
+                len([r for r in done if r["variant"] == v and r["model_requested"] == m])
+                for m in {r["model_requested"] for r in done}
+                if per_model
+            }
+            or {len([r for r in done if r["variant"] == v])}
+        )
+        n = max(sizes) if sizes else 0
+        labels.append(f"{_label(v)}\nn={n}")
+    ax.set_xticklabels(labels, fontsize=10)
+
+
 def chart_context(context: list[dict[str, Any]], path: Path) -> bool:
     rows = [c for c in context if c["added_tokens"] is not None]
     if not rows:
         return False
     fig, ax = _new()
     models = sorted({c["model"] for c in rows})
+    ref_style = {"toolsets": ("--", PALETTE["green"]), "search-call": (":", PALETTE["grey"])}
+    gap = 0.0
     for model in models:
         mine = [c for c in rows if c["model"] == model]
         pe = sorted(
@@ -273,44 +454,73 @@ def chart_context(context: list[dict[str, Any]], path: Path) -> bool:
             ],
             key=lambda c: c["tool_count"],
         )
-        colour = MODEL_COLOR.get(model, PALETTE["grey"])
         if pe:
+            filled = model == models[-1]
+            colour = MODEL_COLOR.get(model, PALETTE["grey"])
             ax.plot(
                 [c["tool_count"] for c in pe],
                 [c["added_tokens"] for c in pe],
                 marker="o",
-                markersize=7,
-                linewidth=2,
+                markersize=9 if not filled else 6,
+                markerfacecolor="white" if not filled else colour,
+                markeredgewidth=1.8,
+                linewidth=2.2 if filled else 0,
                 color=colour,
-                label=f"per-endpoint, {model} (n={pe[0]['n']} per point)",
+                label=f"per-endpoint, {model} (n={pe[0]['n']} runs per point)",
+                zorder=3 if filled else 4,
             )
-        for ref, style in (("toolsets", "--"), ("search-call", ":")):
-            hit = [c for c in mine if c["variant"] == ref]
-            if hit:
-                y = hit[0]["added_tokens"]
-                ax.axhline(y, linestyle=style, linewidth=1.6, color=colour, alpha=0.85)
-                offset = 1 if model == models[0] else -1
-                ax.annotate(
-                    f"{ref}, {model}: {y:,.0f}",
-                    (104, y),
-                    xytext=(0, 4 if offset > 0 else -11),
-                    textcoords="offset points",
-                    fontsize=8,
-                    color=INK,
-                    ha="right",
-                )
-    ax.set_xlabel("Tools exposed by the per-endpoint server", color=INK, fontsize=10)
-    ax.set_ylabel("Input tokens added to the first request", color=INK, fontsize=10)
-    ax.set_xlim(0, 105)
-    ax.set_xticks([0, 10, 25, 50, 100])
+            if filled:
+                for c in pe:
+                    ax.annotate(
+                        f"{c['added_tokens']:,.0f}",
+                        (c["tool_count"], c["added_tokens"]),
+                        xytext=(9, -16),
+                        textcoords="offset points",
+                        fontsize=10,
+                        color=INK,
+                        ha="left",
+                    )
+        hit = [c for c in mine if c["variant"] == CT_VARIANT]
+        if hit:
+            ax.plot(
+                [100],
+                [hit[0]["added_tokens"]],
+                marker="D",
+                markersize=8,
+                color=PALETTE["orange"],
+                linestyle="none",
+                zorder=5,
+                label="per-endpoint 100 + client tool search" if model == models[0] else None,
+            )
+    for ref, (style, colour) in ref_style.items():
+        vals = {c["model"]: c["added_tokens"] for c in rows if c["variant"] == ref}
+        if not vals:
+            continue
+        gap = max(gap, max(vals.values()) - min(vals.values()))
+        ax.axhline(max(vals.values()), linestyle=style, linewidth=2, color=colour, zorder=2)
+        both = " / ".join(f"{vals[m]:,.0f} {m}" for m in models if m in vals)
+        ax.annotate(
+            f"{ref}: {both}",
+            (117, max(vals.values())),
+            xytext=(0, 5),
+            textcoords="offset points",
+            fontsize=10,
+            color=INK,
+            ha="right",
+        )
+    ax.set_xlabel("Tools exposed by the per-endpoint server", color=INK, fontsize=11)
+    ax.set_ylabel("Input tokens the server adds to the first request", color=INK, fontsize=11)
+    ax.set_xlim(0, 118)
+    ax.set_xticks([10, 25, 50, 100])
     ax.set_ylim(bottom=0)
-    ax.legend(frameon=False, fontsize=8, loc="upper left")
-    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
+    ax.legend(frameon=False, fontsize=9.5, loc="upper left", bbox_to_anchor=(0, 0.93))
+    _thousands(ax)
     _finish(
         fig,
         ax,
         "What the server costs before the first question",
-        "Added vs no server. Dashed: toolsets. Dotted: search-call.",
+        "Added vs the same Claude Code with no server. Dashed: toolsets. Dotted: search-call. "
+        f"Haiku and sonnet agree within {gap + 5:,.0f} tokens, so the markers overlap.",
         path,
     )
     return True
@@ -321,47 +531,38 @@ def chart_input_tokens(tasks: list[dict[str, Any]], path: Path) -> bool:
     if not done:
         return False
     variants = _ordered({r["variant"] for r in done})
-    fig, ax = _new()
     models = sorted({r["model_requested"] for r in done})
-    width = 0.8 / len(models)
-    for j, model in enumerate(models):
-        xs, ys, ns = [], [], []
-        for i, v in enumerate(variants):
-            vals = [
+    fig, ax = _new()
+
+    def val(v: str, m: str) -> float | None:
+        return median(
+            [
                 r["input_tokens_total"]
                 for r in done
-                if r["variant"] == v and r["model_requested"] == model
+                if r["variant"] == v and r["model_requested"] == m
             ]
-            if vals:
-                xs.append(i + (j - (len(models) - 1) / 2) * width)
-                ys.append(median(vals) or 0)
-                ns.append(len(vals))
-        bars = ax.bar(
-            xs, ys, width=width * 0.92, color=MODEL_COLOR.get(model, PALETTE["grey"]), label=model
         )
-        for bar, n in zip(bars, ns, strict=True):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"n={n}",
-                ha="center",
-                va="bottom",
-                fontsize=7.5,
-                color=MUTED,
-            )
-    ax.set_xticks(range(len(variants)))
-    ax.set_xticklabels([_label(v) for v in variants], fontsize=8)
-    ax.set_ylabel("Median input tokens per task (all requests)", color=INK, fontsize=10)
-    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"{v:,.0f}"))
-    ax.legend(frameon=False, fontsize=8)
+
+    _grouped_bars(ax, variants, models, val, lambda y: f"{y / 1000:,.0f}k")
+    _n_ticks(ax, variants, done)
+    ax.set_xlabel("Tool design; n = runs per bar", color=INK, fontsize=10.5)
+    ax.set_ylabel("Median input tokens per task (all requests)", color=INK, fontsize=11)
+    _thousands(ax)
+    ax.legend(frameon=False, fontsize=10, loc="upper right")
     _finish(
         fig,
         ax,
         "Input tokens per task",
-        "Fresh, cached and cache-written input summed over every request of the run.",
+        "Fresh, cached and cache-written input summed over every request of the run.\n"
+        "All graded runs, including failed ones.",
         path,
     )
     return True
+
+
+def _pass_cells(done: list[dict[str, Any]], variant: str, band: str) -> tuple[int, int]:
+    cell = [r for r in done if r["variant"] == variant and r["band"] == band]
+    return sum(1 for r in cell if r["pass"]), len(cell)
 
 
 def chart_pass_rate(tasks: list[dict[str, Any]], path: Path) -> bool:
@@ -374,35 +575,157 @@ def chart_pass_rate(tasks: list[dict[str, Any]], path: Path) -> bool:
     width = 0.8 / len(variants)
     for j, v in enumerate(variants):
         for i, band in enumerate(bands):
-            cell = [r for r in done if r["variant"] == v and r["band"] == band]
-            if not cell:
+            k, n = _pass_cells(done, v, band)
+            if not n:
                 continue
-            n = len(cell)
-            p = sum(1 for r in cell if r["pass"]) / n
-            lo, hi = wilson_interval(sum(1 for r in cell if r["pass"]), n)
+            lo, hi = wilson_interval(k, n)
+            p = k / n
             x = i + (j - (len(variants) - 1) / 2) * width
             ax.bar(
                 x,
                 p,
                 width=width * 0.9,
                 color=VARIANT_COLOR.get(v, PALETTE["grey"]),
-                label=v if i == 0 else None,
+                label=_legend_name(v) if i == 0 else None,
             )
-            ax.errorbar(x, p, yerr=[[p - lo], [hi - p]], color=INK, linewidth=1, capsize=2)
-            ax.text(x, 1.04, f"{n}", ha="center", fontsize=7, color=MUTED)
+            ax.errorbar(x, p, yerr=[[p - lo], [hi - p]], color=INK, linewidth=1, capsize=1.5)
+    ticks = []
+    for band in bands:
+        sizes = sorted({_pass_cells(done, v, band)[1] for v in variants} - {0})
+        ticks.append(f"{band}\nn={sizes[-1]}" + (f" ({sizes[0]})" if len(sizes) > 1 else ""))
     ax.set_xticks(range(len(bands)))
-    ax.set_xticklabels(bands, fontsize=9)
-    ax.set_ylim(0, 1.12)
-    ax.set_ylabel("Pass rate (bars) with 95% Wilson interval", color=INK, fontsize=10)
+    ax.set_xticklabels(ticks, fontsize=10)
+    ax.set_ylim(0, 1.05)
+    ax.set_ylabel("Pass rate, with 95% Wilson interval", color=INK, fontsize=11)
     ax.yaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0))
-    ax.legend(frameon=False, fontsize=7.5, ncol=3, loc="upper center", bbox_to_anchor=(0.5, -0.1))
+    ax.legend(frameon=False, fontsize=9, ncol=2, loc="upper center", bbox_to_anchor=(0.5, -0.16))
     _finish(
         fig,
         ax,
         "Pass rate by variant and task band",
-        "Small numbers above the bars are n (runs in that cell). All models pooled.",
+        "All tasks, models pooled. n = runs per bar; in brackets for per-endpoint-10, which skips\n"
+        "tasks it cannot solve. The multi-step band includes multi-04 (a task with a seed flaw).",
         path,
     )
+    return True
+
+
+def _legend_name(v: str) -> str:
+    return v.replace(CLIENT_TOOL_SEARCH_SUFFIX, " + tool search")
+
+
+def _pass_by_variant_model(
+    done: list[dict[str, Any]], variant: str, model: str, *, exclude: str | None = None
+) -> tuple[int, int]:
+    cell = [
+        r
+        for r in done
+        if r["variant"] == variant and r["model_requested"] == model and r["task_id"] != exclude
+    ]
+    return sum(1 for r in cell if r["pass"]), len(cell)
+
+
+def chart_pass_overall(tasks: list[dict[str, Any]], path: Path) -> bool:
+    done = graded(tasks)
+    if not done:
+        return False
+    variants = _ordered({r["variant"] for r in done})
+    models = sorted({r["model_requested"] for r in done})
+    fig, axes = plt.subplots(
+        1, 2, figsize=(FIGSIZE[0], FIGSIZE[1]), sharey=True, gridspec_kw={"wspace": 0.25}
+    )
+    panels = [("All tasks", None), ("Excluding task\nwith seed flaw", FLAWED_TASK)]
+    for ax, (title, exclude) in zip(axes, panels, strict=True):
+        _style(ax)
+        ax.grid(axis="x", color="#E6E6E6", linewidth=0.8)
+        ax.grid(axis="y", visible=False)
+        for i, v in enumerate(variants):
+            for j, m in enumerate(models):
+                k, n = _pass_by_variant_model(done, v, m, exclude=exclude)
+                if not n:
+                    continue
+                lo, hi = wilson_interval(k, n)
+                y = i + (j - (len(models) - 1) / 2) * 0.28
+                colour = MODEL_COLOR.get(m, PALETTE["grey"])
+                ax.plot([lo, hi], [y, y], color=colour, linewidth=2.2, solid_capstyle="butt")
+                ax.plot(
+                    k / n,
+                    y,
+                    "o",
+                    color=colour,
+                    markersize=6.5,
+                    clip_on=False,
+                    label=m if i == 0 else None,
+                )
+        ax.set_xlim(0.7, 1.02)
+        ax.xaxis.set_major_formatter(matplotlib.ticker.PercentFormatter(1.0, decimals=0))
+        ax.set_xticks([0.7, 0.8, 0.9, 1.0])
+        ax.set_xticklabels(["70", "80", "90", "100"])
+        ax.set_title(title, fontsize=10.5, color=INK, loc="left")
+        ax.tick_params(axis="x", labelsize=9.5)
+    axes[0].set_yticks(range(len(variants)))
+    axes[0].set_yticklabels(
+        [
+            _label(v)
+            .replace("search-\ncall", "search-call")
+            .replace("\n+", " +")
+            .replace("\n", " ")
+            if "tool\nsearch" not in _label(v)
+            else "100 tools\n+ tool search"
+            for v in variants
+        ],
+        fontsize=10,
+    )
+    axes[0].set_ylim(len(variants) - 0.5, -0.5)
+    axes[0].set_ylabel("")
+    handles, names = axes[0].get_legend_handles_labels()
+    fig.legend(
+        handles,
+        names,
+        frameon=False,
+        fontsize=10,
+        loc="upper right",
+        ncol=1,
+        bbox_to_anchor=(0.99, 0.93),
+    )
+    fig.text(
+        0.5,
+        0.01,
+        "Pass rate, %, with 95% Wilson interval. Axis starts at 70%, not 0.",
+        ha="center",
+        fontsize=9.5,
+        color=MUTED,
+    )
+    fig.suptitle(
+        "Pass rate per variant and model",
+        x=0.02,
+        ha="left",
+        fontsize=13,
+        fontweight="bold",
+        color=INK,
+    )
+    sizes = sorted({_pass_by_variant_model(done, v, m)[1] for v in variants for m in models})
+    sizes_ex = sorted(
+        {
+            _pass_by_variant_model(done, v, m, exclude=FLAWED_TASK)[1]
+            for v in variants
+            for m in models
+        }
+    )
+    fig.text(
+        0.02,
+        0.885,
+        f"n per point: {', '.join(map(str, sizes))} (all tasks); "
+        f"{', '.join(map(str, sizes_ex))} (excluding the flawed task).\n"
+        "Intervals overlap almost everywhere.",
+        fontsize=9.5,
+        color=MUTED,
+        va="bottom",
+    )
+    fig.patch.set_facecolor(SURFACE)
+    fig.subplots_adjust(left=0.25, right=0.97, top=0.78, bottom=0.12)
+    fig.savefig(path, dpi=DPI, facecolor=SURFACE)
+    plt.close(fig)
     return True
 
 
@@ -411,35 +734,54 @@ def chart_wall(tasks: list[dict[str, Any]], path: Path) -> bool:
     if not done:
         return False
     variants = _ordered({r["variant"] for r in done})
-    data = [[r["wall_ms"] / 1000 for r in done if r["variant"] == v] for v in variants]
+    models = sorted({r["model_requested"] for r in done})
     fig, ax = _new()
-    box = ax.boxplot(
-        data,
-        patch_artist=True,
-        widths=0.55,
-        medianprops={"color": INK, "linewidth": 1.6},
-        whiskerprops={"color": "#8A8A8A"},
-        capprops={"color": "#8A8A8A"},
-        flierprops={
-            "marker": "o",
-            "markersize": 4,
-            "markerfacecolor": "none",
-            "markeredgecolor": "#8A8A8A",
-        },
-    )
-    for patch, v in zip(box["boxes"], variants, strict=True):
-        patch.set_facecolor(VARIANT_COLOR.get(v, PALETTE["grey"]))
-        patch.set_edgecolor("#4A4A4A")
-    ax.set_xticks(range(1, len(variants) + 1))
-    ax.set_xticklabels(
-        [f"{_label(v)}\nn={len(d)}" for v, d in zip(variants, data, strict=True)], fontsize=8
-    )
-    ax.set_ylabel("Wall time per task (seconds)", color=INK, fontsize=10)
+    spread: dict[tuple[str, str], tuple[float, float]] = {}
+
+    def val(v: str, m: str) -> float | None:
+        vals = [
+            r["wall_ms"] / 1000 for r in done if r["variant"] == v and r["model_requested"] == m
+        ]
+        if not vals:
+            return None
+        spread[(v, m)] = (quantile(vals, 0.25) or 0, quantile(vals, 0.75) or 0)
+        return median(vals)
+
+    width = 0.8 / len(models)
+    for j, model in enumerate(models):
+        xs, ys, lo, hi = [], [], [], []
+        for i, v in enumerate(variants):
+            y = val(v, model)
+            if y is None:
+                continue
+            xs.append(i + (j - (len(models) - 1) / 2) * width)
+            ys.append(y)
+            lo.append(y - spread[(v, model)][0])
+            hi.append(spread[(v, model)][1] - y)
+        ax.bar(
+            xs,
+            ys,
+            width=width * 0.92,
+            color=MODEL_COLOR.get(model, PALETTE["grey"]),
+            label=model,
+        )
+        ax.errorbar(xs, ys, yerr=[lo, hi], fmt="none", ecolor=INK, elinewidth=1.2, capsize=3)
+        for x, y, h in zip(xs, ys, hi, strict=True):
+            ax.text(x, y + h + 0.2, f"{y:.1f}", ha="center", va="bottom", fontsize=9, color=INK)
+    ax.set_xticks(range(len(variants)))
+    _n_ticks(ax, variants, done)
+    ax.set_xlabel("Tool design; n = runs per bar", color=INK, fontsize=10.5)
+    ax.set_ylabel("Wall time per task (seconds)", color=INK, fontsize=11)
+    ax.set_ylim(bottom=0)
+    ax.legend(frameon=False, fontsize=10, loc="upper left")
+    slowest = max(done, key=lambda r: r["wall_ms"])
     _finish(
         fig,
         ax,
         "Wall time per task",
-        "Reported by Claude Code: includes its start-up, model time and tool time.",
+        "Bar = median, whisker = 25th to 75th percentile. Claude Code's own wall clock.\n"
+        f"Slowest single run: {slowest['wall_ms'] / 1000:.0f} s ({slowest['model_requested']}, "
+        f"{slowest['variant']}, {slowest['task_id']}), off the scale of the whiskers.",
         path,
     )
     return True
@@ -452,38 +794,46 @@ def chart_wrong_calls(tasks: list[dict[str, Any]], path: Path) -> bool:
     variants = _ordered({r["variant"] for r in amb})
     fig, ax = _new()
     width = 0.38
+    top = 0.0
     for k, (field, label, colour) in enumerate(
         (
             ("wrong_write_calls", "writes outside the task", PALETTE["vermillion"]),
             ("wrong_read_calls", "reads outside the task", PALETTE["sky"]),
         )
     ):
-        ys, ns = [], []
+        ys = []
         for v in variants:
             cell = [r for r in amb if r["variant"] == v]
             ys.append(sum(r[field] for r in cell) / len(cell))
-            ns.append(len(cell))
+        top = max(top, *ys)
         xs = [i + (k - 0.5) * width for i in range(len(variants))]
         ax.bar(xs, ys, width=width * 0.92, color=colour, label=label)
-    for i, v in enumerate(variants):
-        ax.text(
-            i,
-            ax.get_ylim()[1] * 0.98,
-            f"n={sum(1 for r in amb if r['variant'] == v)}",
-            ha="center",
-            va="top",
-            fontsize=8,
-            color=MUTED,
-        )
+        for x, y in zip(xs, ys, strict=True):
+            ax.text(
+                x,
+                y + 0.008,
+                f"{y:.2f}",
+                ha="center",
+                va="bottom",
+                fontsize=8.5,
+                color=INK,
+                rotation=90,
+            )
+    ax.set_ylim(0, top * 1.25)
     ax.set_xticks(range(len(variants)))
-    ax.set_xticklabels([_label(v) for v in variants], fontsize=8)
-    ax.set_ylabel("Mean calls per ambiguous-task run", color=INK, fontsize=10)
-    ax.legend(frameon=False, fontsize=8, loc="upper left", bbox_to_anchor=(0, 0.93))
+    ax.set_xticklabels(
+        [f"{_label(v)}\nn={sum(1 for r in amb if r['variant'] == v)}" for v in variants],
+        fontsize=10,
+    )
+    ax.set_xlabel("Tool design; n = runs per design", color=INK, fontsize=10.5)
+    ax.set_ylabel("Mean calls per ambiguous-task run", color=INK, fontsize=11)
+    ax.legend(frameon=False, fontsize=10, loc="upper left")
     _finish(
         fig,
         ax,
         "Wrong-tool calls on ambiguous tasks",
-        "Calls to operations the task does not need (a refused attempt still counts).",
+        "Calls to operations the task does not need; a refused attempt still counts.\n"
+        "Both models pooled. All graded runs of the ambiguous band.",
         path,
     )
     return True
@@ -496,42 +846,52 @@ def chart_cost(tasks: list[dict[str, Any]], path: Path) -> bool:
     variants = _ordered({r["variant"] for r in done})
     models = sorted({r["model_requested"] for r in done})
     fig, ax = _new()
+
+    def vals(v: str, m: str) -> list[float]:
+        return [
+            r["total_cost_usd"] for r in done if r["variant"] == v and r["model_requested"] == m
+        ]
+
+    def mean_of(v: str, m: str) -> float | None:
+        xs = vals(v, m)
+        return sum(xs) / len(xs) if xs else None
+
+    _grouped_bars(
+        ax,
+        variants,
+        models,
+        lambda v, m: median(vals(v, m)),
+        lambda y: f"${y:.4f}",
+        label_y=mean_of,
+    )
     width = 0.8 / len(models)
     for j, model in enumerate(models):
-        xs, ys, ns = [], [], []
         for i, v in enumerate(variants):
-            vals = [
-                r["total_cost_usd"]
-                for r in done
-                if r["variant"] == v and r["model_requested"] == model
-            ]
-            if vals:
-                xs.append(i + (j - (len(models) - 1) / 2) * width)
-                ys.append(1000 * sum(vals) / len(vals))
-                ns.append(len(vals))
-        bars = ax.bar(
-            xs, ys, width=width * 0.92, color=MODEL_COLOR.get(model, PALETTE["grey"]), label=model
-        )
-        for bar, n in zip(bars, ns, strict=True):
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height(),
-                f"n={n}",
-                ha="center",
-                va="bottom",
-                fontsize=7.5,
-                color=MUTED,
-            )
-    ax.set_xticks(range(len(variants)))
-    ax.set_xticklabels([_label(v) for v in variants], fontsize=8)
-    ax.set_ylabel("CLI-reported cost per 1,000 tasks (USD)", color=INK, fontsize=10)
-    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"${v:,.0f}"))
-    ax.legend(frameon=False, fontsize=8)
+            xs = vals(v, model)
+            if xs:
+                ax.plot(
+                    i + (j - (len(models) - 1) / 2) * width,
+                    sum(xs) / len(xs),
+                    "D",
+                    color="white",
+                    markeredgecolor=INK,
+                    markersize=6,
+                    zorder=5,
+                    label="mean" if (i, j) == (0, 0) else None,
+                )
+    top = max(sum(vals(v, m)) / len(vals(v, m)) for v in variants for m in models if vals(v, m))
+    ax.set_ylim(0, max(ax.get_ylim()[1], top * 1.1))
+    _n_ticks(ax, variants, done)
+    ax.set_xlabel("Tool design; n = runs per bar", color=INK, fontsize=10.5)
+    ax.set_ylabel("CLI-reported cost per task (USD)", color=INK, fontsize=11)
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f"${v:.3f}"))
+    ax.legend(frameon=False, fontsize=10, loc="upper left")
     _finish(
         fig,
         ax,
-        "Cost per 1,000 tasks",
-        "Mean CLI-reported cost (list-price equivalent) x 1,000. Cache writes included.",
+        "Cost per task",
+        "Bar and label = median. Diamond = mean, which a few long runs pull up.\n"
+        "List-price equivalent, as reported by Claude Code; not a bill.",
         path,
     )
     return True
@@ -543,7 +903,8 @@ CHARTS: list[tuple[str, str]] = [
     ("3-pass-rate-by-band.png", "pass"),
     ("4-wall-time.png", "wall"),
     ("5-wrong-calls-ambiguous.png", "wrong"),
-    ("6-cost-per-1000-tasks.png", "cost"),
+    ("6-cost-per-task.png", "cost"),
+    ("7-pass-rate-by-variant.png", "overall"),
 ]
 
 
@@ -609,6 +970,46 @@ def build_markdown(
         )
     else:
         out.append("No context baseline runs yet.")
+    regraded = sum(1 for r in tasks if r.get("regraded_from"))
+    if regraded:
+        out += [
+            "",
+            f"{regraded} run(s) carry a post-hoc re-grade (`regraded_from`); the latest grade is "
+            "counted. See docs/benchmark.md, section Post-hoc changes and known task flaws.",
+        ]
+    out += ["", "## Pass rates: all tasks and excluding the task with a seed flaw", ""]
+    out.append(
+        "multi-04-merge-duplicate-customers has a flaw in its seed data (see docs/benchmark.md). "
+        "The second pair of columns drops it. Intervals are 95% Wilson; most overlap."
+    )
+    out.append("")
+    if done:
+        out.append(
+            _md_table(
+                [
+                    "variant",
+                    "model",
+                    "all tasks: passed/n",
+                    "all tasks: 95% interval",
+                    "excluding task with seed flaw: passed/n",
+                    "excluding task with seed flaw: 95% interval",
+                ],
+                [
+                    [
+                        t["variant"],
+                        t["model"],
+                        f"{t['all']['passes']}/{t['all']['n']} ({t['all']['rate']:.0%})",
+                        f"{t['all']['lo']:.0%} to {t['all']['hi']:.0%}",
+                        f"{t['excl']['passes']}/{t['excl']['n']} ({t['excl']['rate']:.0%})"
+                        if t["excl"]["n"]
+                        else "",
+                        f"{t['excl']['lo']:.0%} to {t['excl']['hi']:.0%}" if t["excl"]["n"] else "",
+                    ]
+                    for t in pass_table(done)
+                ],
+            )
+        )
+        out += ["", "Per-task pass rates by variant: `summary_by_task.csv`."]
     out += ["", "## Per variant and model (all bands)", ""]
     rows = []
     for variant in _ordered({r["variant"] for r in done}):
@@ -661,6 +1062,201 @@ def build_markdown(
     return "\n".join(out) + "\n"
 
 
+def _pct(v: float | None) -> str:
+    return "" if v is None else f"{v:.1%}"
+
+
+def build_key_numbers(
+    tasks: list[dict[str, Any]],
+    baseline: list[dict[str, Any]],
+    context: list[dict[str, Any]],
+    probe: list[dict[str, Any]] | None = None,
+) -> str:
+    """Plain tables of the headline numbers, all computed from the same rows as summary.md."""
+    done = graded(tasks)
+    variants = _ordered({r["variant"] for r in done})
+    models = sorted({r["model_requested"] for r in done})
+    out = ["# Key numbers", ""]
+    out += [
+        "Generated by `python -m bench report` from `runs.jsonl` (latest grade per run) and "
+        "`context_baseline.jsonl`. Nothing here is edited by hand.",
+        "",
+        "## Context tokens added to the first request (median over baseline runs)",
+        "",
+        _md_table(
+            [
+                "variant",
+                "model",
+                "baseline runs",
+                "first request tokens",
+                "no-server tokens",
+                "added",
+            ],
+            [
+                [
+                    c["variant"],
+                    c["model"],
+                    str(c["n"]),
+                    _fmt(c["first_request_tokens"]),
+                    _fmt(c["no_server_tokens"]),
+                    _fmt(c["added_tokens"]),
+                ]
+                for c in context
+            ],
+        ),
+        "",
+        "## Median input tokens per task (all requests of a run)",
+        "",
+    ]
+    rows = []
+    for v in variants:
+        for m in models:
+            cell = [r for r in done if r["variant"] == v and r["model_requested"] == m]
+            if cell:
+                rows.append([v, m, str(len(cell)), _fmt(cell_stats(cell)["median_input_tokens"])])
+    out += [_md_table(["variant", "model", "n", "median input tokens"], rows), ""]
+    out += ["## Pass rates (95% Wilson interval)", ""]
+    out.append(
+        _md_table(
+            [
+                "variant",
+                "model",
+                "all tasks passed/n",
+                "all tasks rate",
+                "all tasks interval",
+                "excluding task with seed flaw passed/n",
+                "excluding task with seed flaw rate",
+                "excluding task with seed flaw interval",
+            ],
+            [
+                [
+                    t["variant"],
+                    t["model"],
+                    f"{t['all']['passes']}/{t['all']['n']}",
+                    _pct(t["all"]["rate"]),
+                    f"{t['all']['lo']:.1%} to {t['all']['hi']:.1%}",
+                    f"{t['excl']['passes']}/{t['excl']['n']}",
+                    _pct(t["excl"]["rate"]),
+                    f"{t['excl']['lo']:.1%} to {t['excl']['hi']:.1%}",
+                ]
+                for t in pass_table(done)
+            ],
+        )
+    )
+    out += ["", "## Median wall time per task, seconds", ""]
+    rows = []
+    for v in variants:
+        for m in models:
+            cell = [r for r in done if r["variant"] == v and r["model_requested"] == m]
+            if cell:
+                wall = cell_stats(cell)["median_wall_ms"]
+                rows.append([v, m, str(len(cell)), _fmt(None if wall is None else wall / 1000, 2)])
+    out += [_md_table(["variant", "model", "n", "median wall s"], rows), ""]
+    out += ["## Median CLI-reported cost per task, USD (list-price equivalent)", ""]
+    rows = []
+    for v in variants:
+        for m in models:
+            cell = [r for r in done if r["variant"] == v and r["model_requested"] == m]
+            if cell:
+                rows.append([v, m, str(len(cell)), _fmt(cell_stats(cell)["median_cost_usd"], 4)])
+    for m in models:
+        cell = [r for r in done if r["model_requested"] == m]
+        rows.append(
+            ["all variants", m, str(len(cell)), _fmt(cell_stats(cell)["median_cost_usd"], 4)]
+        )
+    out += [_md_table(["variant", "model", "n", "median cost USD"], rows), ""]
+    out += ["## Wrong-write calls (writes the task does not need; refused attempts count)", ""]
+    rows = []
+    for v in variants:
+        for m in models:
+            cell = [r for r in done if r["variant"] == v and r["model_requested"] == m]
+            if cell:
+                bad = [r for r in cell if r["wrong_write_calls"] > 0]
+                rows.append(
+                    [
+                        v,
+                        m,
+                        str(len(cell)),
+                        str(sum(r["wrong_write_calls"] for r in cell)),
+                        str(len(bad)),
+                        str(sum(1 for r in bad if not r["pass"])),
+                    ]
+                )
+    out += [
+        _md_table(
+            [
+                "variant",
+                "model",
+                "n",
+                "wrong-write calls",
+                "runs with at least one",
+                "of those, failed runs",
+            ],
+            rows,
+        ),
+        "",
+    ]
+    out += ["## Tool search variant (per-endpoint-100 with and without client tool search)", ""]
+    rows = []
+    for v in ("per-endpoint-100", CT_VARIANT):
+        for m in models:
+            cell = [r for r in done if r["variant"] == v and r["model_requested"] == m]
+            added = next(
+                (c["added_tokens"] for c in context if c["variant"] == v and c["model"] == m), None
+            )
+            if cell:
+                st = cell_stats(cell)
+                rows.append(
+                    [
+                        v,
+                        m,
+                        str(st["n"]),
+                        _fmt(added),
+                        _fmt(st["median_input_tokens"]),
+                        f"{st['passes']}/{st['n']}",
+                        f"{st['wilson_lo']:.1%} to {st['wilson_hi']:.1%}",
+                        _fmt((st["median_wall_ms"] or 0) / 1000, 2),
+                        _fmt(st["median_cost_usd"], 4),
+                    ]
+                )
+    out += [
+        _md_table(
+            [
+                "variant",
+                "model",
+                "n",
+                "context tokens added",
+                "median input tokens",
+                "passed/n",
+                "95% interval",
+                "median wall s",
+                "median cost USD",
+            ],
+            rows,
+        ),
+        "",
+    ]
+    if probe:
+        out += ["## Tool search probe (sonnet, first request tokens)", ""]
+        out.append(
+            _md_table(
+                ["probe tools", "ENABLE_TOOL_SEARCH", "first request tokens", "tools listed"],
+                [
+                    [
+                        str(r["probe_tools"]),
+                        str(r["probe_env"]),
+                        _fmt(r["first_request_input_tokens"]),
+                        str(r["init_tool_count"]),
+                    ]
+                    for r in probe
+                    if r["status"] not in INFRA_STATUSES
+                ],
+            )
+        )
+        out.append("")
+    return "\n".join(out)
+
+
 def tool_lists(baseline: list[dict[str, Any]], raw_dir: Path) -> dict[str, list[str]]:
     """The tools each variant exposed to the model, read from the init event of a baseline stream."""
     out: dict[str, list[str]] = {}
@@ -686,6 +1282,13 @@ def build_report(results_dir: Path) -> dict[str, Any]:
     charts_dir = results_dir / "charts"
     charts_dir.mkdir(parents=True, exist_ok=True)
     write_csv(results_dir / "summary.csv", summary_rows(tasks, context))
+    write_by_task_csv(results_dir / "summary_by_task.csv", by_task_rows(graded(tasks)))
+    (results_dir / "KEY_NUMBERS.md").write_text(
+        build_key_numbers(
+            tasks, baseline, context, read_rows(results_dir / "tool_search_probe.jsonl")
+        ),
+        encoding="utf-8",
+    )
     (results_dir / "summary.md").write_text(
         build_markdown(tasks, baseline, context), encoding="utf-8"
     )
@@ -699,6 +1302,7 @@ def build_report(results_dir: Path) -> dict[str, Any]:
         "input": lambda p: chart_input_tokens(tasks, p),
         "pass": lambda p: chart_pass_rate(tasks, p),
         "wall": lambda p: chart_wall(tasks, p),
+        "overall": lambda p: chart_pass_overall(tasks, p),
         "wrong": lambda p: chart_wrong_calls(tasks, p),
         "cost": lambda p: chart_cost(tasks, p),
     }

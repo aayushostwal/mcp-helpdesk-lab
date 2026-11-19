@@ -140,7 +140,7 @@ def test_full_report_writes_csv_markdown_and_six_charts(tmp_path: Path) -> None:
         + "\n",
     )
     info = build_report(tmp_path)
-    assert len(info["charts"]) == 6
+    assert len(info["charts"]) == 7
     for name in info["charts"]:
         png = (tmp_path / "charts" / name).read_bytes()
         assert png[:8] == b"\x89PNG\r\n\x1a\n" and len(png) > 5000
