@@ -18,7 +18,20 @@ All notable changes are recorded here. The format follows
   deterministic seed that also writes `bench/tasks/fixtures.json`.
 - Unit and integration test suites, CI workflow, Dockerfile and docker-compose.
 
+- MCP server (phase 2), `helpdesk-mcp`: a thin httpx wrapper over the API using the official
+  `mcp` SDK, over stdio or streamable HTTP. Server instructions, four resources
+  (`helpdesk://schema`, `helpdesk://policies/refunds`, `helpdesk://policies/sla`,
+  `helpdesk://tickets/{ticket_id}`) and three prompts, each switchable with `--no-*` flags.
+- Three tool designs sharing one executor: `per-endpoint` (generated from `openapi.json`, with
+  `--tool-count` subsets), `toolsets` (8 tools with `action` and `params`) and `search-call`
+  (in-repo BM25 search, describe, call). Errors are `isError` results with the API's problem
+  document; tool annotations come from the HTTP method; POSTs carry an `Idempotency-Key`.
+- Structured stderr logging of every tool call, `scripts/mcp_token_report.py` and
+  `docs/tool-list-sizes.md`, `make mcp`, `make inspector`, `make tool-sizes`.
+- MCP test suite (`tests/mcp`) with a 90% coverage gate on `src/helpdesk_mcp`, and two ADRs.
+- `mcp` is now a core dependency (`>=1.30,<2`); the Dockerfile copies `openapi.json` because it
+  is bundled into the wheel.
+
 ### Planned
 
-- Phase 2: MCP server (`helpdesk_mcp`) with three tool designs.
 - Phase 3: benchmark harness.

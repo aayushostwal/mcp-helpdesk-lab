@@ -1,7 +1,7 @@
 # Architecture
 
-This page describes how the Helpdesk API is put together. The MCP server and the benchmark
-(phases 2 and 3) are described at the end, because they sit on top of this service.
+This page describes how the Helpdesk API is put together. The MCP server (phase 2) is described at
+the end, because it sits on top of this service; the benchmark (phase 3) comes after it.
 
 ## Components
 
@@ -122,16 +122,18 @@ raises before the commit, the request's session is discarded and nothing is pers
 example a macro whose last action is an illegal status change leaves no partial comment behind).
 Reads never commit.
 
-## What comes next
+## The MCP server and the benchmark
 
 ```mermaid
 flowchart LR
-    agent["AI agent<br/>(Claude Code)"] -->|MCP| mcp["helpdesk_mcp<br/>phase 2"]
+    agent["AI agent<br/>(Claude Code)"] -->|MCP| mcp["helpdesk_mcp<br/>(built, phase 2)"]
     mcp -->|HTTP, API key| api["Helpdesk API<br/>(this repo, phase 1)"]
-    bench["bench harness<br/>phase 3"] -->|runs| agent
+    bench["bench harness<br/>(phase 3, not built yet)"] -->|runs| agent
     bench -->|grades via| api
 ```
 
 The MCP server is a thin wrapper: it never touches the database and holds no business rules.
 Tools are generated from `openapi.json`, which is why every operation carries a stable
-`operationId`, a summary and a description written for an AI reader.
+`operationId`, a summary and a description written for an AI reader. The three tool designs
+share one executor that turns a tool call into an HTTP request. See
+[mcp-server.md](mcp-server.md).
